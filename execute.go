@@ -41,7 +41,6 @@ type StageError struct {
 
 // runPipeline runs all stages in the pipeline chain from the earliest to the latest.
 // It returns the output of the last stage in the chain.
-// As of now all calls to this function input an s that is the last stage in the chain.
 
 func (ch *Chain) Run(c *gin.Context) (any, *StageError) {
 
