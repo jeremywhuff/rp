@@ -85,4 +85,20 @@ And, finally!, we generate the finalized route chain:
 <img align="left" width="766px" src="docs/rpFrameworkDemoCode4.png">
 <br clear="left"/>
 
-The InParallel that's demonstrated in the screenshot works like a dream, but I haven't moved it into rp as of right now.
+The InParallel that's demonstrated in the screenshot works like a dream, but I haven't moved it into rp as of right now. My testing involved a route that made three sequential fetches to the database. Each fetch was around ~90ms, resulting in ~270ms latency for the total route. Just wrapping the three fetches into the InParallel function dropped total latency to barely about 90ms.
+
+Last Thing: Stages also embed a print statement template for logging, and the Run function will log it to the console when the debug var is set to true. My log of the three sequential fetches in a pipeline looked like this:
+
+<img align="left" width="945px" src="docs/rpFrameworkDemoLog1.png">
+<br clear="left"/>
+
+The third column prints each stage's latency (with any hokey log.Print's required of the developer), and the cyan coloring highlights any stage that takes longer than 1ms.
+
+The fourth column does its best to diagram what's going on in a visually intuitive way. A CtxGet (context get) stage prints leftmost, showing that it does not directly depend on upstream stages. Stages the take an input from the immediately preceding stage are indented and start with an arrow ("=>"). Stages like ToObjectID and MongoFetch output data from their execution, so they include a second arrow, while CtxSet, which outputs nil, does not have an arrow.
+
+The intention of logging at this level of detail as a default debug behavior is meant to show you a detailed but easy-to-read picture of each individual operation and failure point. It made my InParallel testing really quick and easy by showing all of the latencies in a table. That table also made me realize that a fresh start of the server will always have a big lag time on the first fetch to MongoDB because that connection has to re-establish itself. The detailed logging hopefully builds good knowledge and intuition too :)
+
+Here's an example of a failure caused by sending a dummy _id value into the second fetch. The debug print makes it clear that the value sent was legitimate format for an ObjectID, but no document in the database matched it.
+
+<img align="left" width="944px" src="docs/rpFrameworkDemoLog2.png">
+<br clear="left"/>
