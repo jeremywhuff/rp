@@ -85,14 +85,14 @@ And, finally!, we generate the finalized route chain:
 <img align="left" width="766px" src="docs/rpFrameworkDemoCode4.png">
 <br clear="left"/>
 
-The InParallel that's demonstrated in the screenshot works like a dream, but I haven't moved it into rp as of right now. My testing involved a route that made three sequential fetches to the database. Each fetch was around ~90ms, resulting in ~270ms latency for the total route. Just wrapping the three fetches into the InParallel function dropped total latency to barely about 90ms.
+The InParallel that's demonstrated in the screenshot works like a dream, but I haven't moved it into rp as of right now. My testing involved a route that made three sequential fetches to the database. Each fetch was around ~90ms, resulting in ~270ms latency for the total route. Just wrapping the three fetches into the InParallel function dropped total latency to barely above 90ms.
 
 Last Thing: Stages also embed a print statement template for logging, and the Run function will log it to the console when the debug var is set to true. My log of the three sequential fetches in a pipeline looked like this:
 
 <img align="left" width="945px" src="docs/rpFrameworkDemoLog1.png">
 <br clear="left"/>
 
-The third column prints each stage's latency (with any hokey log.Print's required of the developer), and the cyan coloring highlights any stage that takes longer than 1ms.
+The third column prints each stage's latency (without any hokey log.Print's required of the developer), and the cyan coloring highlights any stage that takes longer than 1ms.
 
 The fourth column does its best to diagram what's going on in a visually intuitive way. A CtxGet (context get) stage prints leftmost, showing that it does not directly depend on upstream stages. Stages the take an input from the immediately preceding stage are indented and start with an arrow ("=>"). Stages like ToObjectID and MongoFetch output data from their execution, so they include a second arrow, while CtxSet, which outputs nil, does not have an arrow.
 
