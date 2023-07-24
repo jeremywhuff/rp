@@ -1,25 +1,50 @@
 # rp
-rp, or "Request Pipeline", is a lightweight, chain-based framework for building request handlers that are easier to read, debug, reconfigure, and maintain. Subchains can be reordered or executed concurrently by changing a single line of code, eliminating the need to write goroutine and channel logic.
+rp, or "Request Pipeline", is a lightweight, chain-based framework for building request handlers that are easier to read, debug, reconfigure, and maintain. It also makes concurrent execution of request subtasks easy since subchains can be parallelized in just a single line of code. rp is written in Go and based on [Gin](https://github.com/gin-gonic/gin), Go's [top web framework](https://github.com/EvanLi/Github-Ranking/blob/master/Top100/Go.md).
 
-rp is written in Go and based on [Gin](https://github.com/gin-gonic/gin), Go's [top web framework](https://github.com/EvanLi/Github-Ranking/blob/master/Top100/Go.md).
+### UNDER DEVELOPMENT - I expect to have a stable version in a couple of weeks. This README will be updated as progress is made.
 
-## UNDER DEVELOPMENT - I expect to have a stable version in a couple of weeks. This README will be updated as progress is made.
+---
 
-### Features
+### How It Works
 
-rp organizes request handler code into modular, well-defined execution stages. For example,
+Define complete, error-handling request pipelines by chaining together stages of discrete tasks. Here is a four-stage pipeline chain for a REST API GET request.
 
 ```go
 getCustomerName := First(
     URLParam("customerID")).Then(
     ToObjectID()).Then(
-    MongoFetch("databaseKey", "collectionName", H{
+    MongoFetch(databaseKey, customersCollectionName, H{
         "firstName": 1,
         "lastName":  1})).Then(
     Out(http.StatusOK))
 ```
 
-defines a complete, error-handling request pipeline that extracts the customerID from the URL, converts it to a valid MongoDB ObjectID type, fetches the document's name fields, and then writes them to the response.
+Upon execution the pipeline extracts the customerID from the URL, converts it to a valid MongoDB ObjectID type, fetches the document's name fields, and then writes them to the response. Any verbose task execution, error handling, and logging code is defined internally for each stage.
+
+Modular, well-defined stages make analysis and debugging more immediate and straightforward. The debug logs will tabulate pipeline run metrics by stage, showing timestamp, success or failure, and latency.
+
+```
+// Successful request
+2023/07/19 09:15:42 | OK  |       3.208µs | Req.URL("customerID") =>
+2023/07/19 09:15:42 | OK  |         833ns |   => .(ObjectID) =>
+2023/07/19 09:15:42 | OK  |  121.874958ms |   => MongoFetch("customers") =>
+2023/07/19 09:15:42 | OK  |       3.625µs |   => OUT{_id, firstName, lastName}
+
+// Request failed due to a malformed customerID in the URL
+2023/07/19 09:48:32 | OK  |       2.666µs | Req.URL("customerID") =>
+2023/07/19 09:48:32 | ERR |       2.791µs |   => .(ObjectID) =>
+2023/07/19 09:48:32
+2023/07/19 09:48:32 Error: Invalid: the provided hex string is not a valid ObjectID
+
+// Request failed because that customerID wasn't found in the database
+2023/07/19 09:50:14 | OK  |      47.792µs | Req.URL("customerID") =>
+2023/07/19 09:50:14 | OK  |        1.75µs |   => .(ObjectID) =>
+2023/07/19 09:50:14 | ERR |   96.946208ms |   => MongoFetch("customers") =>
+2023/07/19 09:50:14
+2023/07/19 09:50:14 Error: MongoFetch: Document not found
+```
+
+(TODO Add the InParallel example)
 
 This structure and its toolset provide a variety of benefits.
 
