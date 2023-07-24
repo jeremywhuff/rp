@@ -1,7 +1,31 @@
 # rp
-rp: "Request Pipeline". A Go language Gin-based framework for building server endpoints more easily via chains of well-defined, modular execution stages.
+rp, or "Request Pipeline", is a lightweight, chain-based framework for building request handlers that are easier to read, debug, reconfigure, and maintain. Subchains can be reordered or executed concurrently by changing a single line of code, eliminating the need to write goroutine and channel logic.
+
+rp is written in Go and based on [Gin](https://github.com/gin-gonic/gin), Go's [top web framework](https://github.com/EvanLi/Github-Ranking/blob/master/Top100/Go.md).
 
 ## UNDER DEVELOPMENT - I expect to have a stable version in a couple of weeks. This README will be updated as progress is made.
+
+### Features
+
+rp organizes request handler code into modular, well-defined execution stages. For example,
+
+```go
+getCustomerName := First(
+    URLParam("customerID")).Then(
+    ToObjectID()).Then(
+    MongoFetch("databaseKey", "collectionName", H{
+        "firstName": 1,
+        "lastName":  1})).Then(
+    Out(http.StatusOK))
+```
+
+defines a complete, error-handling request pipeline that extracts the customerID from the URL, converts it to a valid MongoDB ObjectID type, fetches the document's name fields, and then writes them to the response.
+
+This structure and its toolset provide a variety of benefits.
+
+| Feature | Description | Status |
+| --- | --- | --- |
+| Readability | Pipeline code is compact because verbose execution and error handling code is packaged within each stage. | `functional` |
 
 ## Contents
 
