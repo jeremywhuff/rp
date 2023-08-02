@@ -77,10 +77,10 @@ func (l DefaultLogger) LogError(e *StageError) {
 	log.Printf("")
 }
 
-func Execute(ch *Chain, c *gin.Context, lgr *Logger) (any, *StageError) {
+func Execute(ch *Chain, c *gin.Context, lgr Logger) (any, *StageError) {
 
 	if lgr != nil {
-		(*lgr).LogStart()
+		lgr.LogStart()
 	}
 
 	s := ch.First
@@ -95,9 +95,9 @@ func Execute(ch *Chain, c *gin.Context, lgr *Logger) (any, *StageError) {
 		d, e = s.Execute(d, c)
 
 		if lgr != nil {
-			(*lgr).LogStage(e == nil, time.Since(t), s.P())
+			lgr.LogStage(e == nil, time.Since(t), s.P())
 			if e != nil {
-				(*lgr).LogError(e)
+				lgr.LogError(e)
 			}
 		}
 
