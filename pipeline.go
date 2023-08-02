@@ -10,13 +10,13 @@ import (
 // When F returns an error, it is passed in to the E function, which generates the HTTP status code and JSON
 // response data that should be returned in the network response.
 // The last Stage of a pipeline should return a *Response as the output of F.
-// When a stage completes, Name will be logged to the console with the results of the stage.
+// When a stage completes, P() will be logged to the console with the results of the stage.
 type Stage struct {
-	Name string                               // Name of the stage, for logging
-	F    func(any, *gin.Context) (any, error) // Function to execute
-	E    func(error) *StageError              // Network error to return for F's error
-	n    *Stage                               // Next stage
-	l    *Stage                               // Last stage
+	P func() string                        // Printed name of the stage, for logging
+	F func(any, *gin.Context) (any, error) // Function to execute
+	E func(error) *StageError              // Network error to return for F's error
+	n *Stage                               // Next stage
+	l *Stage                               // Last stage
 }
 
 func (s *Stage) Chain() *Chain {

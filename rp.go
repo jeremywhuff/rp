@@ -31,85 +31,22 @@ var (
 	ISR = http.StatusInternalServerError
 )
 
-func S(name string, f func(any, *gin.Context) (any, error), errorCode int, errorPrefix string) *Stage {
-
-	prefix := ""
-	if errorPrefix != "" {
-		prefix = errorPrefix + ": "
-	}
+// S creates a generic stage that executes the given function.
+// E's default code is http.StatusBadRequest since that is common.
+func S(name string, f func(any, *gin.Context) (any, error)) *Stage {
 
 	return &Stage{
-		Name: name,
-		F:    f,
+		P: func() string {
+			return name
+		},
+		F: f,
 		E: func(err error) *StageError {
 			return &StageError{
-				Code: errorCode,
-				Obj:  H{"error": prefix + err.Error()},
+				Code: BR,
+				Obj:  H{"error": err.Error()},
 			}
 		},
 	}
-}
-
-type pipeResult struct {
-	Out   any
-	Error *StageError
-}
-
-func runInParallel(ch *Chain, c *gin.Context, r chan pipeResult) {
-	o, e := Execute(ch, c, nil)
-	r <- pipeResult{
-		Out:   o,
-		Error: e,
-	}
-}
-
-type parallelError struct {
-	error
-	StageError *StageError
-}
-
-func (e parallelError) Error() string {
-	return "parallel error"
-}
-
-func InParallel(chains ...*Chain) *Chain {
-	return First(&Stage{
-
-		Name: "InParallel",
-
-		F: func(in any, c *gin.Context) (any, error) {
-
-			resultChans := make([](chan pipeResult), len(chains))
-
-			for i, ch := range chains {
-				chn := make(chan pipeResult)
-				defer close(chn)
-				go runInParallel(ch, c, chn)
-				resultChans[i] = chn
-			}
-
-			out := make([]any, len(chains))
-			outErr := make([]*StageError, len(chains))
-
-			for i, rc := range resultChans {
-				r := <-rc
-				out[i] = r.Out
-				outErr[i] = r.Error
-			}
-
-			for _, e := range outErr {
-				if e != nil {
-					return nil, parallelError{StageError: e}
-				}
-			}
-
-			return out, nil
-		},
-
-		E: func(err error) *StageError {
-			return err.(parallelError).StageError
-		},
-	})
 }
 
 //
@@ -117,7 +54,9 @@ func InParallel(chains ...*Chain) *Chain {
 func MongoFetch(ctxDatabaseName string, collectionName string, projection map[string]any) *Stage {
 	return &Stage{
 
-		Name: "  => MongoFetch(\"" + collectionName + "\") =>",
+		P: func() string {
+			return "  => MongoFetch(\"" + collectionName + "\") =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 
@@ -165,7 +104,9 @@ func MongoFetch(ctxDatabaseName string, collectionName string, projection map[st
 func FieldValue(key string) *Stage {
 	return &Stage{
 
-		Name: "  => Value(\"" + key + "\") =>",
+		P: func() string {
+			return "  => Value(\"" + key + "\") =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 			return in.(map[string]any)[key], nil
@@ -176,7 +117,9 @@ func FieldValue(key string) *Stage {
 func MongoPipe(ctxDatabaseName string, collectionName string) *Stage {
 	return &Stage{
 
-		Name: "  => MongoPipe(\"" + collectionName + "\") =>",
+		P: func() string {
+			return "  => MongoPipe(\"" + collectionName + "\") =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 
@@ -221,7 +164,9 @@ var ErrNotFound = errors.New("not found")
 func MongoInsert(ctxDatabaseName string, collectionName string) *Stage {
 	return &Stage{
 
-		Name: "  => MongoInsert(\"" + collectionName + "\") =>",
+		P: func() string {
+			return "  => MongoInsert(\"" + collectionName + "\") =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 
@@ -250,7 +195,9 @@ func MongoInsert(ctxDatabaseName string, collectionName string) *Stage {
 func CtxGet(key string) *Stage {
 	return &Stage{
 
-		Name: "[\"" + key + "\"] =>",
+		P: func() string {
+			return "[\"" + key + "\"] =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 			val, ok := c.Get(key)
@@ -272,7 +219,9 @@ func CtxGet(key string) *Stage {
 func CtxSet(key string) *Stage {
 	return &Stage{
 
-		Name: "  => [\"" + key + "\"]",
+		P: func() string {
+			return "  => [\"" + key + "\"]"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 			c.Set(key, in)
@@ -284,7 +233,9 @@ func CtxSet(key string) *Stage {
 func Bind(obj any) *Stage {
 	return &Stage{
 
-		Name: "Req.Body =>",
+		P: func() string {
+			return "Req.Body =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 			err := c.ShouldBindJSON(obj)
@@ -306,7 +257,9 @@ func Bind(obj any) *Stage {
 func URLParam(key string) *Stage {
 	return &Stage{
 
-		Name: "Req.URL(\"" + key + "\") =>",
+		P: func() string {
+			return "Req.URL(\"" + key + "\") =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 			return c.Param(key), nil
@@ -317,7 +270,9 @@ func URLParam(key string) *Stage {
 func ToObjectID() *Stage {
 	return &Stage{
 
-		Name: "  => .(ObjectID) =>",
+		P: func() string {
+			return "  => .(ObjectID) =>"
+		},
 
 		F: func(in any, c *gin.Context) (any, error) {
 			return primitive.ObjectIDFromHex(in.(string))

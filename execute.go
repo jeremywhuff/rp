@@ -95,7 +95,7 @@ func Execute(ch *Chain, c *gin.Context, lgr *Logger) (any, *StageError) {
 		d, e = s.Execute(d, c)
 
 		if lgr != nil {
-			(*lgr).LogStage(e == nil, time.Since(t), s.Name)
+			(*lgr).LogStage(e == nil, time.Since(t), s.P())
 			if e != nil {
 				(*lgr).LogError(e)
 			}
