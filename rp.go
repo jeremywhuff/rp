@@ -33,7 +33,7 @@ var (
 
 // S creates a generic stage that executes the given function.
 // E's default code is http.StatusBadRequest since that is common.
-func S(name string, f func(any, *gin.Context) (any, error)) *Stage {
+func S(name string, f func(any, *gin.Context, Logger) (any, error)) *Stage {
 
 	return &Stage{
 		P: func() string {
@@ -49,6 +49,43 @@ func S(name string, f func(any, *gin.Context) (any, error)) *Stage {
 	}
 }
 
+type ChainExecutionError struct {
+	StageError *StageError
+}
+
+func (e ChainExecutionError) Error() string {
+	return "chain execution error"
+}
+
+func If(cond func(any, *gin.Context) bool, then *Chain, els *Chain) *Stage {
+	return &Stage{
+
+		P: func() string {
+			return "  => If => then/else"
+		},
+
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			var ch *Chain
+			if cond(in, c) {
+				ch = then
+			} else {
+				ch = els
+			}
+
+			o, e := Execute(ch, c, lgr)
+			if e != nil {
+				return nil, ChainExecutionError{StageError: e}
+			}
+			return o, nil
+		},
+
+		E: func(err error) *StageError {
+			return err.(ChainExecutionError).StageError
+		},
+	}
+}
+
 //
 
 func MongoFetch(ctxDatabaseName string, collectionName string, projection map[string]any) *Stage {
@@ -58,7 +95,7 @@ func MongoFetch(ctxDatabaseName string, collectionName string, projection map[st
 			return "  => MongoFetch(\"" + collectionName + "\") =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 			db := c.MustGet(ctxDatabaseName).(*mongo.Database)
 			coll := db.Collection(collectionName)
@@ -108,8 +145,12 @@ func FieldValue(key string) *Stage {
 			return "  => Value(\"" + key + "\") =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
-			return in.(map[string]any)[key], nil
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			if m, ok := in.(map[string]any); ok {
+				return m[key], nil
+			}
+			return nil, nil
 		},
 	}
 }
@@ -126,7 +167,7 @@ func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOpt
 			return "  => MongoPipe(\"" + collectionName + "\") =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 			db := c.MustGet(ctxDatabaseName).(*mongo.Database)
 			coll := db.Collection(collectionName)
@@ -177,7 +218,7 @@ func MongoInsert(ctxDatabaseName string, collectionName string) *Stage {
 			return "  => MongoInsert(\"" + collectionName + "\") =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 			db := c.MustGet(ctxDatabaseName).(*mongo.Database)
 			coll := db.Collection(collectionName)
@@ -208,7 +249,7 @@ func CtxGet(key string) *Stage {
 			return "[\"" + key + "\"] =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 			val, ok := c.Get(key)
 			if !ok {
 				return nil, ErrNotFound
@@ -232,7 +273,7 @@ func CtxSet(key string) *Stage {
 			return "  => [\"" + key + "\"]"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 			c.Set(key, in)
 			return in, nil
 		},
@@ -246,7 +287,7 @@ func Bind(obj any) *Stage {
 			return "Req.Body =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 			err := c.ShouldBindJSON(obj)
 			if err != nil {
 				return nil, err
@@ -270,7 +311,7 @@ func URLParam(key string) *Stage {
 			return "Req.URL(\"" + key + "\") =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 			return c.Param(key), nil
 		},
 	}
@@ -283,7 +324,7 @@ func ToObjectID() *Stage {
 			return "  => .(ObjectID) =>"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 			return primitive.ObjectIDFromHex(in.(string))
 		},
 

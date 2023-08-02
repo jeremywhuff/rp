@@ -12,11 +12,11 @@ import (
 // The last Stage of a pipeline should return a *Response as the output of F.
 // When a stage completes, P() will be logged to the console with the results of the stage.
 type Stage struct {
-	P func() string                        // Printed name of the stage, for logging
-	F func(any, *gin.Context) (any, error) // Function to execute
-	E func(error) *StageError              // Network error to return for F's error
-	n *Stage                               // Next stage
-	l *Stage                               // Last stage
+	P func() string                                // Printed name of the stage, for logging
+	F func(any, *gin.Context, Logger) (any, error) // Function to execute. Optional logger for stages that nest chains.
+	E func(error) *StageError                      // Network error to return for F's error
+	n *Stage                                       // Next stage
+	l *Stage                                       // Last stage
 }
 
 func (s *Stage) Chain() *Chain {

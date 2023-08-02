@@ -92,7 +92,7 @@ func Execute(ch *Chain, c *gin.Context, lgr Logger) (any, *StageError) {
 
 		t := time.Now()
 
-		d, e = s.Execute(d, c)
+		d, e = s.Execute(d, c, lgr)
 
 		if lgr != nil {
 			lgr.LogStage(e == nil, time.Since(t), s.P())
@@ -112,9 +112,9 @@ func Execute(ch *Chain, c *gin.Context, lgr Logger) (any, *StageError) {
 }
 
 // Execute executes the stage by calling the F function followed by the E function if there's an error.
-func (s *Stage) Execute(in any, c *gin.Context) (any, *StageError) {
+func (s *Stage) Execute(in any, c *gin.Context, lgr Logger) (any, *StageError) {
 
-	out, err := s.F(in, c)
+	out, err := s.F(in, c, lgr)
 	if err != nil {
 		return nil, s.E(err)
 	}

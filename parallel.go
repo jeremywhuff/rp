@@ -7,8 +7,8 @@ type pipeResult struct {
 	Error *StageError
 }
 
-func runInParallel(ch *Chain, c *gin.Context, r chan pipeResult) {
-	o, e := Execute(ch, c, nil)
+func runInParallel(ch *Chain, c *gin.Context, lgr Logger, r chan pipeResult) {
+	o, e := Execute(ch, c, lgr)
 	r <- pipeResult{
 		Out:   o,
 		Error: e,
@@ -31,14 +31,14 @@ func InParallel(chains ...*Chain) *Chain {
 			return "InParallel"
 		},
 
-		F: func(in any, c *gin.Context) (any, error) {
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 			resultChans := make([](chan pipeResult), len(chains))
 
 			for i, ch := range chains {
 				chn := make(chan pipeResult)
 				defer close(chn)
-				go runInParallel(ch, c, chn)
+				go runInParallel(ch, c, lgr, chn)
 				resultChans[i] = chn
 			}
 
