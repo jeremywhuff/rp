@@ -73,6 +73,11 @@ func (ch *Chain) Catch(Code int, Message string) *Chain {
 	return ch
 }
 
+func (ch *Chain) CatchError(E func(err error) *StageError) *Chain {
+	ch.Last.E = E
+	return ch
+}
+
 // Append concatenates together multiple pipelines defined by the above First+Then method.
 func Append(chains ...*Chain) *Chain {
 

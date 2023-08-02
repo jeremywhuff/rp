@@ -40,7 +40,7 @@ type StageError struct {
 type Logger interface {
 	LogStart()
 	LogStage(success bool, elapsed time.Duration, print string)
-	LogError(*StageError)
+	LogError(e *StageError)
 }
 
 type DefaultLogger struct {

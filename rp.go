@@ -15,7 +15,7 @@ import (
 type Route struct {
 	// TODO: Path, method
 	Pipe   *Chain
-	Logger *Logger
+	Logger Logger
 }
 
 func (r *Route) Handler() gin.HandlerFunc {
