@@ -8,12 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var debug = true
-
 // Run runs the route's Pipe and sets the network response based on the run results.
 func (r *Route) Run(c *gin.Context) {
 
-	o, e := r.Pipe.Run(c)
+	o, e := Execute(r.Pipe, c, r.Logger)
 	if e != nil {
 		c.JSON(e.Code, e.Obj)
 		return
@@ -39,13 +37,50 @@ type StageError struct {
 	Obj  any // JSON response data
 }
 
-// runPipeline runs all stages in the pipeline chain from the earliest to the latest.
-// It returns the output of the last stage in the chain.
+type Logger interface {
+	LogStart()
+	LogStage(success bool, elapsed time.Duration, print string)
+	LogError(*StageError)
+}
 
-func (ch *Chain) Run(c *gin.Context) (any, *StageError) {
+type DefaultLogger struct {
+	Logger
+}
 
-	if debug {
-		log.Print("Starting pipeline...")
+func (l DefaultLogger) LogStart() {
+	log.Print("Starting pipeline...")
+}
+
+func (l DefaultLogger) LogStage(success bool, elapsed time.Duration, print string) {
+
+	// Column 1: Success or failure
+	lbl := color.New(color.FgWhite).Add(color.BgGreen).Sprintf(" OK  ")
+	if !success {
+		lbl = color.New(color.FgWhite).Add(color.BgRed).Sprintf(" ERR ")
+	}
+
+	// Column 2: Time elapsed
+	tclr := color.New(color.FgWhite, color.Faint)
+	if elapsed > time.Millisecond {
+		tclr = color.New(color.FgWhite).Add(color.BgCyan)
+	}
+	time := tclr.Sprintf("%13v", elapsed)
+
+	// Column 3: Stage print
+
+	log.Print("|" + lbl + "| " + time + " | " + print)
+}
+
+func (l DefaultLogger) LogError(e *StageError) {
+	log.Printf("")
+	log.Printf("Error: %s", e.Obj.(H)["error"])
+	log.Printf("")
+}
+
+func Execute(ch *Chain, c *gin.Context, lgr *Logger) (any, *StageError) {
+
+	if lgr != nil {
+		(*lgr).LogStart()
 	}
 
 	s := ch.First
@@ -58,21 +93,16 @@ func (ch *Chain) Run(c *gin.Context) (any, *StageError) {
 		t := time.Now()
 
 		d, e = s.Execute(d, c)
-		if e != nil {
 
-			if debug {
-				printResult(false, time.Since(t), s.Name)
-
-				log.Printf("")
-				log.Printf("Error: %s", e.Obj.(H)["error"])
-				log.Printf("")
+		if lgr != nil {
+			(*lgr).LogStage(e == nil, time.Since(t), s.Name)
+			if e != nil {
+				(*lgr).LogError(e)
 			}
-
-			return nil, e
 		}
 
-		if debug {
-			printResult(true, time.Since(t), s.Name)
+		if e != nil {
+			return nil, e
 		}
 
 		s = s.n
@@ -90,20 +120,4 @@ func (s *Stage) Execute(in any, c *gin.Context) (any, *StageError) {
 	}
 
 	return out, nil
-}
-
-func printResult(success bool, elapsed time.Duration, name string) {
-	lbl := color.New(color.FgWhite).Add(color.BgGreen).Sprintf(" OK  ")
-	if !success {
-		lbl = color.New(color.FgWhite).Add(color.BgRed).Sprintf(" ERR ")
-	}
-
-	tclr := color.New(color.FgWhite, color.Faint)
-	if elapsed > time.Millisecond {
-		tclr = color.New(color.FgWhite).Add(color.BgCyan)
-	}
-
-	time := tclr.Sprintf("%13v", elapsed)
-
-	log.Print("|" + lbl + "| " + time + " | " + name)
 }

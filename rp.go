@@ -14,7 +14,8 @@ import (
 
 type Route struct {
 	// TODO: Path, method
-	Pipe *Chain
+	Pipe   *Chain
+	Logger *Logger
 }
 
 func (r *Route) Handler() gin.HandlerFunc {
@@ -23,19 +24,7 @@ func (r *Route) Handler() gin.HandlerFunc {
 	}
 }
 
-// TODO: Remove this
-func StartPipe() *Stage {
-	return &Stage{
-		Name: "Start",
-		F: func(in any, c *gin.Context) (any, error) {
-			return in, nil
-		},
-	}
-}
-
 type H map[string]any
-
-//
 
 var (
 	BR  = http.StatusBadRequest
@@ -67,7 +56,7 @@ type pipeResult struct {
 }
 
 func runInParallel(ch *Chain, c *gin.Context, r chan pipeResult) {
-	o, e := ch.Run(c)
+	o, e := Execute(ch, c, nil)
 	r <- pipeResult{
 		Out:   o,
 		Error: e,

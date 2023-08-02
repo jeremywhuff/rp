@@ -1,6 +1,8 @@
 package rp
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+)
 
 // Stage is a step in a request pipeline. Stages are connected together as double-linked lists by n and l.
 // When a pipeline is run, it executes each Stage's F function. The input to F is the output of the last Stage
