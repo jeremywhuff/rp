@@ -115,7 +115,8 @@ func FieldValue(key string) *Stage {
 }
 
 type MongoPipeOptions struct {
-	AllowNoDocuments *bool
+	// If true, 0 results will not return an error. Default is false.
+	AllowNoDocuments bool
 }
 
 func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOptions) *Stage {
@@ -141,7 +142,7 @@ func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOpt
 				return nil, err
 			}
 
-			if opts != nil && opts.AllowNoDocuments != nil && *opts.AllowNoDocuments {
+			if opts != nil && opts.AllowNoDocuments {
 				return results, nil
 			}
 
