@@ -48,7 +48,7 @@ type DefaultLogger struct {
 }
 
 func (l DefaultLogger) LogStart() {
-	log.Print("Starting pipeline...")
+	log.Print("Starting execution chain...")
 }
 
 func (l DefaultLogger) LogStage(success bool, elapsed time.Duration, print string) {

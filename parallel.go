@@ -1,6 +1,10 @@
 package rp
 
-import "github.com/gin-gonic/gin"
+import (
+	"fmt"
+
+	"github.com/gin-gonic/gin"
+)
 
 type pipeResult struct {
 	Out   any
@@ -28,7 +32,7 @@ func InParallel(chains ...*Chain) *Chain {
 	return First(&Stage{
 
 		P: func() string {
-			return "InParallel"
+			return fmt.Sprintf("InParallel: %d chains", len(chains))
 		},
 
 		F: func(in any, c *gin.Context, lgr Logger) (any, error) {

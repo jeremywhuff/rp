@@ -61,7 +61,10 @@ func If(cond func(any, *gin.Context) bool, then *Chain, els *Chain) *Stage {
 	return &Stage{
 
 		P: func() string {
-			return "  => If => then/else"
+			if then != nil && els == nil {
+				return "If => then"
+			}
+			return "If => then/else"
 		},
 
 		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
@@ -71,6 +74,10 @@ func If(cond func(any, *gin.Context) bool, then *Chain, els *Chain) *Stage {
 				ch = then
 			} else {
 				ch = els
+			}
+
+			if ch == nil {
+				return nil, nil
 			}
 
 			o, e := Execute(ch, c, lgr)
