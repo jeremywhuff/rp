@@ -114,7 +114,11 @@ func FieldValue(key string) *Stage {
 	}
 }
 
-func MongoPipe(ctxDatabaseName string, collectionName string) *Stage {
+type MongoPipeOptions struct {
+	AllowNoDocuments *bool
+}
+
+func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOptions) *Stage {
 	return &Stage{
 
 		P: func() string {
@@ -135,6 +139,10 @@ func MongoPipe(ctxDatabaseName string, collectionName string) *Stage {
 
 			if err = cur.All(context.Background(), &results); err != nil {
 				return nil, err
+			}
+
+			if opts != nil && opts.AllowNoDocuments != nil && *opts.AllowNoDocuments {
+				return results, nil
 			}
 
 			if len(results) > 0 {
