@@ -183,14 +183,14 @@ func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOpt
 				return nil, err
 			}
 
-			if opts != nil && opts.AllowNoDocuments {
-				return results, nil
+			if len(results) == 0 {
+				if opts != nil && opts.AllowNoDocuments {
+					return nil, nil
+				}
+				return nil, mongo.ErrNoDocuments
 			}
 
-			if len(results) > 0 {
-				return results[0], nil
-			}
-			return nil, mongo.ErrNoDocuments
+			return results[0], nil
 		},
 
 		E: func(err error) *StageError {
