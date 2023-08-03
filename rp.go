@@ -325,6 +325,19 @@ func URLParam(key string) *Stage {
 	}
 }
 
+func QueryParam(key string) *Stage {
+	return &Stage{
+
+		P: func() string {
+			return "Req.Query(\"" + key + "\") =>"
+		},
+
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
+			return c.Query(key), nil
+		},
+	}
+}
+
 func ToObjectID() *Stage {
 	return &Stage{
 
@@ -345,9 +358,37 @@ func ToObjectID() *Stage {
 	}
 }
 
-// ToTime - Converts in to time.Time. in must be a string. It will be parsed per the given timezone and layout.
-// If ctxTimezoneName is "" or its value has not been set in the context, UTC will be used.
+// ToTime - Converts in to time.Time for the UTC timezone. in must be a string matching the given layout.
+// It is equivalent to calling ToTimeInLocation with ctxTimezoneName = "".
 func ToTime(ctxTimezoneName string, layout string) *Stage {
+	return &Stage{
+
+		P: func() string {
+			return "  => .(time.Time) =>"
+		},
+
+		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			timeString, ok := in.(string)
+			if !ok {
+				return nil, errors.New("not a string")
+			}
+
+			return time.Parse(layout, timeString)
+		},
+
+		E: func(err error) *StageError {
+			return &StageError{
+				Code: BR,
+				Obj:  H{"error": "Invalid: " + err.Error()},
+			}
+		},
+	}
+}
+
+// ToTimeInLocation - Converts in to time.Time. in must be a string. It will be parsed per the given timezone and layout.
+// If ctxTimezoneName is "" or its value has not been set in the context, UTC will be used.
+func ToTimeInLocation(ctxTimezoneName string, layout string) *Stage {
 	return &Stage{
 
 		P: func() string {
