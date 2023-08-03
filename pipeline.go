@@ -78,8 +78,8 @@ func (ch *Chain) CatchError(E func(err error) *StageError) *Chain {
 	return ch
 }
 
-// Append concatenates together multiple pipelines defined by the above First+Then method.
-func Append(chains ...*Chain) *Chain {
+// InSequence concatenates together multiple chains defined by the above First+Then method.
+func InSequence(chains ...*Chain) *Chain {
 
 	if len(chains) == 0 {
 		return nil
