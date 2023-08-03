@@ -180,8 +180,10 @@ func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOpt
 			db := c.MustGet(ctxDatabaseName).(*mongo.Database)
 			coll := db.Collection(collectionName)
 
-			results := opts.Results
-			if results == nil {
+			var results any
+			if opts != nil && opts.Results != nil {
+				results = opts.Results
+			} else {
 				results = make([]map[string]any, 0)
 			}
 			cur, err := coll.Aggregate(context.Background(), in)
