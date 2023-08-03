@@ -164,8 +164,6 @@ func FieldValue(key string) *Stage {
 }
 
 type MongoPipeOptions struct {
-	// If true, 0 results will not return an error. Default is false.
-	AllowNoDocuments bool
 	// If non-nil, the results will be unmarshalled into this object. Default is nil.
 	Results any
 }
@@ -196,23 +194,10 @@ func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOpt
 				return nil, err
 			}
 
-			if len(results.([]any)) == 0 {
-				if opts != nil && opts.AllowNoDocuments {
-					return nil, nil
-				}
-				return nil, mongo.ErrNoDocuments
-			}
-
-			return results.([]any)[0], nil
+			return results, nil
 		},
 
 		E: func(err error) *StageError {
-			if err == mongo.ErrNoDocuments {
-				return &StageError{
-					Code: http.StatusNotFound,
-					Obj:  H{"error": "MongoFetch: Document not found"},
-				}
-			}
 			return &StageError{
 				Code: ISR,
 				Obj:  H{"error": err.Error()},
