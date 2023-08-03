@@ -360,7 +360,7 @@ func ToObjectID() *Stage {
 
 // ToTime - Converts in to time.Time for the UTC timezone. in must be a string matching the given layout.
 // It is equivalent to calling ToTimeInLocation with ctxTimezoneName = "".
-func ToTime(ctxTimezoneName string, layout string) *Stage {
+func ToTime(layout string) *Stage {
 	return &Stage{
 
 		P: func() string {
