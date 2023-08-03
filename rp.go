@@ -181,7 +181,7 @@ func MongoPipe(ctxDatabaseName string, collectionName string, opts *MongoPipeOpt
 			coll := db.Collection(collectionName)
 
 			results := make([]map[string]any, 0)
-			cur, err := coll.Aggregate(context.Background(), in.([]H))
+			cur, err := coll.Aggregate(context.Background(), in)
 			if err != nil {
 				return nil, err
 			}
