@@ -8,19 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Run runs the route's Pipe and sets the network response based on the run results.
-func (r *Route) Run(c *gin.Context) {
-
-	o, e := Execute(r.Pipe, c, r.Logger)
-	if e != nil {
-		c.JSON(e.Code, e.Obj)
-		return
-	}
-
-	res := o.(*Response)
-	c.JSON(res.Code, res.Obj)
-}
-
 // TODO: Replace the Response and StageError types with this single type
 type JSONResponse struct {
 	Code int // HTTP status code
