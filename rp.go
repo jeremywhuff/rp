@@ -3,10 +3,7 @@ package rp
 // rp stands for "request pipeline"
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/gin-gonic/gin"
 )
 
 // Helpers
@@ -18,62 +15,23 @@ var (
 	ISR = http.StatusInternalServerError
 )
 
-// S creates a generic stage that executes the given function.
-// E's default code is http.StatusBadRequest since that is common.
-func S(name string, f func(any, *gin.Context, Logger) (any, error)) *Stage {
-
-	return &Stage{
-		P: func() string {
-			return name
-		},
-		F: f,
-		E: func(err error) *StageError {
-			return &StageError{
-				Code: BR,
-				Obj:  H{"error": err.Error()},
-			}
-		},
-	}
-}
-
-// CtxGet / CtxSet
-
-var ErrNotFound = errors.New("not found")
-
-func CtxGet(key string) *Stage {
-	return &Stage{
-
-		P: func() string {
-			return "[\"" + key + "\"] =>"
-		},
-
-		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
-			val, ok := c.Get(key)
-			if !ok {
-				return nil, ErrNotFound
-			}
-			return val, nil
-		},
-
-		E: func(err error) *StageError {
-			return &StageError{
-				Code: ISR,
-				Obj:  H{"error": "Key not found: " + key},
-			}
-		},
-	}
-}
-
-func CtxSet(key string) *Stage {
-	return &Stage{
-
-		P: func() string {
-			return "  => [\"" + key + "\"]"
-		},
-
-		F: func(in any, c *gin.Context, lgr Logger) (any, error) {
-			c.Set(key, in)
-			return in, nil
-		},
-	}
-}
+// Files within this package:
+//
+// | File           | Description                                                        |
+// | -------------- | ------------------------------------------------------------------ |
+// | CORE FUNCTIONALITY                                                                  |
+// | rp.go          | This file; Some helpers and documentation                          |
+// | route.go       | Route type, the top-level object that contains the pipeline        |
+// | pipeline.go    | Stage & Chain types; Basic building blocks for defining pipelines  |
+// | execute.go     | Execute func that runs pipelines; Logging via the Logger interface |
+// | conditional.go | Stage that wraps chains into an if/else control flow               |
+// | parallel.go    | Stage that runs multiple chains in parallel                        |
+// | -------------- | ------------------------------------------------------------------ |
+// | STAGE GENERATOR FUNCTIONS                                                           |
+// | basic.go       | Generic stage generator, context get/set stages                    |
+// | parse.go       | Request parsing stages                                             |
+// | conversion.go  | Type conversion stages                                             |
+// | -------------- | ------------------------------------------------------------------ |
+// | INTEGRATIONS																		 |
+// | rpout/mongo.go | Stages that use the MongoDB Go driver                              |
+// |                | "go.mongodb.org/mongo-driver/mongo"								 |
