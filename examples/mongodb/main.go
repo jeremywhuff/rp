@@ -307,3 +307,60 @@ func runPaymentChain() *Chain {
 				return nil, nil
 			}))
 }
+
+func createNewOrderChain() *Chain {
+	return First(
+
+		S(`create_new_order(["mongo.document.customer"].ID, ["mongo.document.inventory"].ID, ["req.body"].Quantity, ["total"])`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				customerID := c.MustGet("mongo.document.customer").(*CustomerDocument).ID
+				itemID := c.MustGet("mongo.document.inventory").(*InventoryDocument).ID
+				quantity := c.MustGet("req.body").(*PurchaseRequestBody).Quantity
+				total := c.MustGet("total").(int)
+
+				order := OrderDocumentFields{
+					Customer: customerID,
+					Item:     itemID,
+					Quantity: quantity,
+					Total:    total,
+				}
+				return order, nil
+			})).Then(
+
+		rpout.MongoInsert("mongo.client.database", "orders"))
+}
+
+func sendOrderInProgressAlertChain() *Chain {
+	return MakeChain(
+
+		S(`send_order_in_progress_alert(["req.body"].CustomerID, ["req.body"].SKU, ["req.body"].Quantity)`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				emailClient := c.MustGet("email.client").(*EmailClient)
+
+				customerID := c.MustGet("req.body").(*PurchaseRequestBody).CustomerID
+				sku := c.MustGet("req.body").(*PurchaseRequestBody).SKU
+				quantity := c.MustGet("req.body").(*PurchaseRequestBody).Quantity
+
+				err := emailClient.SendOrderInProgressAlert(customerID, sku, quantity)
+				if err != nil {
+					return nil, err
+				}
+				return nil, nil
+			}))
+}
+
+func successResponseChain() *Chain {
+	return MakeChain(
+
+		S(`success_response()`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				res := Response{
+					Code: http.StatusOK,
+					Obj:  gin.H{"message": "Purchase successful"},
+				}
+				return res, nil
+			}))
+}

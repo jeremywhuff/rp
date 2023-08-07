@@ -176,7 +176,7 @@ func MongoInsert(ctxDatabaseName string, collectionName string) *Stage {
 			db := c.MustGet(ctxDatabaseName).(*mongo.Database)
 			coll := db.Collection(collectionName)
 
-			insertResult, err := coll.InsertOne(c, in)
+			insertResult, err := coll.InsertOne(context.Background(), in)
 			if err != nil {
 				return nil, err
 			}

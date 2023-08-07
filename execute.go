@@ -25,20 +25,25 @@ type StageError struct {
 }
 
 type Logger interface {
-	LogStart()
-	LogStage(success bool, elapsed time.Duration, print string)
-	LogError(e *StageError)
+	LogMessage(msg string)
+	LogStageStart(print string)
+	LogStageComplete(success bool, elapsed time.Duration, print string)
+	LogStageError(e *StageError)
 }
 
 type DefaultLogger struct {
 	Logger
 }
 
-func (l DefaultLogger) LogStart() {
-	log.Print("Starting execution chain...")
+func (l DefaultLogger) LogMessage(msg string) {
+	log.Print(msg)
 }
 
-func (l DefaultLogger) LogStage(success bool, elapsed time.Duration, print string) {
+func (l DefaultLogger) LogStageStart(print string) {
+	// Ignore
+}
+
+func (l DefaultLogger) LogStageComplete(success bool, elapsed time.Duration, print string) {
 
 	// Column 1: Success or failure
 	lbl := color.New(color.FgWhite).Add(color.BgGreen).Sprintf(" OK  ")
@@ -58,7 +63,7 @@ func (l DefaultLogger) LogStage(success bool, elapsed time.Duration, print strin
 	log.Print("|" + lbl + "| " + time + " | " + print)
 }
 
-func (l DefaultLogger) LogError(e *StageError) {
+func (l DefaultLogger) LogStageError(e *StageError) {
 	log.Printf("")
 	log.Printf("Error: %s", e.Obj.(H)["error"])
 	log.Printf("")
@@ -67,7 +72,7 @@ func (l DefaultLogger) LogError(e *StageError) {
 func Execute(ch *Chain, c *gin.Context, lgr Logger) (any, *StageError) {
 
 	if lgr != nil {
-		lgr.LogStart()
+		lgr.LogMessage("Starting execution chain...")
 	}
 
 	s := ch.First
@@ -77,14 +82,18 @@ func Execute(ch *Chain, c *gin.Context, lgr Logger) (any, *StageError) {
 	// Execute all stages
 	for s != nil {
 
+		if lgr != nil {
+			lgr.LogStageStart(s.P())
+		}
+
 		t := time.Now()
 
 		d, e = s.Execute(d, c, lgr)
 
 		if lgr != nil {
-			lgr.LogStage(e == nil, time.Since(t), s.P())
+			lgr.LogStageComplete(e == nil, time.Since(t), s.P())
 			if e != nil {
-				lgr.LogError(e)
+				lgr.LogStageError(e)
 			}
 		}
 
