@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -210,6 +211,7 @@ func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, sh
 
 func parseChain() *Chain {
 	return First(
+		// TODO: Should Bind take a pointer or a value?
 		Bind(&PurchaseRequestBody{})).Then(
 		CtxSet("req.body"))
 }
@@ -250,4 +252,58 @@ func fetchInventoryChain() *Chain {
 			Result: InventoryDocument{}})).Then(
 
 		CtxSet("mongo.document.inventory"))
+}
+
+var ErrNotEnoughStock = errors.New("not enough stock")
+
+func checkInventoryStockChain() *Chain {
+	return MakeChain(
+
+		S(`check_inventory_stock(["mongo.document.inventory"].Stock, ["req.body"].Quantity)`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				stock := c.MustGet("mongo.document.inventory").(*InventoryDocument).Stock
+				quantity := c.MustGet("req.body").(*PurchaseRequestBody).Quantity
+
+				if stock < quantity {
+					return nil, ErrNotEnoughStock
+				}
+				return nil, nil
+
+			})).Catch(BR, "Not enough stock")
+}
+
+func calculateTotalChain() *Chain {
+	return MakeChain(
+
+		S(`calculate_total(["req.body"].Quantity, ["mongo.document.inventory"].Price) =>`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				quantity := c.MustGet("req.body").(*PurchaseRequestBody).Quantity
+				price := c.MustGet("mongo.document.inventory").(*InventoryDocument).Price
+
+				return quantity * price, nil
+
+			})).Then(
+
+		CtxSet("total"))
+}
+
+func runPaymentChain() *Chain {
+	return MakeChain(
+
+		S(`run_payment(["total"], ["mongo.document.customer"].WalletID)`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				paymentClient := c.MustGet("payment.client").(*PaymentClient)
+
+				total := c.MustGet("total").(int)
+				walletID := c.MustGet("mongo.document.customer").(*CustomerDocument).WalletID
+
+				_, err := paymentClient.RunTransaction(total, walletID)
+				if err != nil {
+					return nil, err
+				}
+				return nil, nil
+			}))
 }

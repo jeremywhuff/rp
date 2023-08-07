@@ -57,6 +57,18 @@ func (ch *Chain) Then(n *Stage) *Chain {
 	return ch
 }
 
+// Alternatively, MakeChain can build a chain from a slice of stages.
+func MakeChain(stages ...*Stage) *Chain {
+	if len(stages) == 0 {
+		return nil
+	}
+	ch := First(stages[0])
+	for _, s := range stages[1:] {
+		ch.Then(s)
+	}
+	return ch
+}
+
 // Catch can be used to optionally override a stage's E function like:
 //
 //	pipeline := First(
