@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	. "github.com/jeremywhuff/rp"
+	"github.com/jeremywhuff/rp/rpout"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -115,6 +117,8 @@ func main() {
 	// log.Println(time.Since(t))
 }
 
+// Purchase handler without rp
+
 func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient, c *gin.Context) {
 
 	// Parse request body
@@ -175,7 +179,7 @@ func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, sh
 		return
 	}
 
-	// Create order
+	// Create new order document
 
 	order := OrderDocumentFields{
 		Customer: customer.ID,
@@ -190,7 +194,7 @@ func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, sh
 		return
 	}
 
-	// Send email for receipt
+	// Send "order in progress" email to customer
 
 	if err := emailClient.SendOrderInProgressAlert(body.CustomerID, body.SKU, body.Quantity); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -199,5 +203,41 @@ func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, sh
 
 	// Return response
 
-	c.JSON(http.StatusOK, gin.H{"message": "Order created"})
+	c.JSON(http.StatusOK, gin.H{"message": "Purchase successful"})
+}
+
+// rp execution chains
+
+func parseChain() *Chain {
+	return First(
+		Bind(&PurchaseRequestBody{})).Then(
+		CtxSet("req.body"))
+}
+
+func fetchCustomerChain() *Chain {
+	return First(
+
+		S(`fetch_customer_pipeline(["req.body"].CustomerID) =>`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+				customerID := c.MustGet("req.body").(*PurchaseRequestBody).CustomerID
+				pipeline := []map[string]any{{
+					"$match": map[string]any{
+						"customer_id": customerID}}}
+				return pipeline, nil
+			})).Then(
+
+		// TODO: Make this into FindOne
+		rpout.MongoPipe("mongo.client.database", "customers", &rpout.MongoPipeOptions{
+			Results: []CustomerDocument{}})).Then(
+
+		S(`  => [0] =>`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+				results := in.([]CustomerDocument)
+				if len(results) == 0 {
+					return nil, ErrNotFound
+				}
+				return results[0], nil
+			})).Then(
+
+		CtxSet("mongo.document.customer"))
 }
