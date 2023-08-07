@@ -217,27 +217,37 @@ func parseChain() *Chain {
 func fetchCustomerChain() *Chain {
 	return First(
 
-		S(`fetch_customer_pipeline(["req.body"].CustomerID) =>`,
+		S(`fetch_customer_query(["req.body"].CustomerID) =>`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
 				customerID := c.MustGet("req.body").(*PurchaseRequestBody).CustomerID
-				pipeline := []map[string]any{{
-					"$match": map[string]any{
-						"customer_id": customerID}}}
-				return pipeline, nil
+				query := map[string]any{
+					"customer_id": customerID}
+				return query, nil
+
 			})).Then(
 
-		// TODO: Make this into FindOne
-		rpout.MongoPipe("mongo.client.database", "customers", &rpout.MongoPipeOptions{
-			Results: []CustomerDocument{}})).Then(
-
-		S(`  => [0] =>`,
-			func(in any, c *gin.Context, lgr Logger) (any, error) {
-				results := in.([]CustomerDocument)
-				if len(results) == 0 {
-					return nil, ErrNotFound
-				}
-				return results[0], nil
-			})).Then(
+		rpout.MongoFindOne("mongo.client.database", "customers", rpout.MongoFindOneOptions{
+			Result: CustomerDocument{}})).Then(
 
 		CtxSet("mongo.document.customer"))
+}
+
+func fetchInventoryChain() *Chain {
+	return First(
+
+		S(`fetch_inventory_query(["req.body"].SKU) =>`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				sku := c.MustGet("req.body").(*PurchaseRequestBody).SKU
+				query := map[string]any{
+					"sku": sku}
+				return query, nil
+
+			})).Then(
+
+		rpout.MongoFindOne("mongo.client.database", "inventory", rpout.MongoFindOneOptions{
+			Result: InventoryDocument{}})).Then(
+
+		CtxSet("mongo.document.inventory"))
 }
