@@ -43,7 +43,7 @@ type InventoryDocument struct {
 	ID    primitive.ObjectID `bson:"_id"`
 	SKU   string             `bson:"sku"`
 	Name  string             `bson:"name"`
-	Price int                `bson:"price"`
+	Price int                `bson:"price"` // in cents
 	Stock int                `bson:"stock"`
 }
 
@@ -56,7 +56,7 @@ type OrderDocumentFields struct {
 	Customer primitive.ObjectID `bson:"customer"`
 	Item     primitive.ObjectID `bson:"item"`
 	Quantity int                `bson:"quantity"`
-	Total    int                `bson:"total"`
+	Total    int                `bson:"total"` // in cents
 }
 
 // Dummy Clients
@@ -85,6 +85,49 @@ func (cl *EmailClient) SendOrderInProgressAlert(customerID string, SKU string, q
 	return nil
 }
 
+// Database initialization
+
+func setUpDB(db *mongo.Database) error {
+
+	// Create the test customer, if needed
+	rslt := db.Collection("customers").FindOne(context.Background(),
+		map[string]any{"customer_id": "C13579"})
+	if e := rslt.Err(); e == mongo.ErrNoDocuments {
+		_, err := db.Collection("customers").InsertOne(context.Background(), CustomerDocument{
+			ID:         primitive.NewObjectID(),
+			CustomerID: "C13579",
+			FirstName:  "Sandra",
+			LastName:   "Hernandez",
+			Email:      "sandra.hernandez@example.com",
+			WalletID:   "W24680",
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Create the test inventory item, if needed
+	rslt = db.Collection("inventory").FindOne(context.Background(),
+		map[string]any{"sku": "SKU159260"})
+	if e := rslt.Err(); e == mongo.ErrNoDocuments {
+		_, err := db.Collection("inventory").InsertOne(context.Background(), InventoryDocument{
+			ID:    primitive.NewObjectID(),
+			SKU:   "SKU159260",
+			Name:  "Wonder Widget",
+			Price: 3500,
+			Stock: 5,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Clear all orders
+	db.Collection("orders").DeleteMany(context.Background(), map[string]any{})
+
+	return nil
+}
+
 // Purchase Route
 
 var Method = http.MethodPost
@@ -102,109 +145,121 @@ func main() {
 
 	mongoDBURI := "mongodb://localhost:27017"
 
-	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoDBURI))
+	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoDBURI))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Disconnect(context.Background())
+	defer mongoClient.Disconnect(context.Background())
 
-	// t := time.Now()
+	// Set up database
 
-	// _, err = client.Database("rp_test").Collection("customers").InsertOne(context.Background(), map[string]any{"first_name": "Ted", "last_name": "Hooper"})
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	err = setUpDB(mongoClient.Database("rp_test"))
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// log.Println(time.Since(t))
+	// Set up dummy clients
+
+	paymentClient := &PaymentClient{}
+	shippingClient := &ShippingClient{}
+	emailClient := &EmailClient{}
+
+	// Set up and run router
+
+	r := gin.Default()
+	r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
+	r.Run(":8081")
 }
 
 // Purchase handler without rp
 
-func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient, c *gin.Context) {
+func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
-	// Parse request body
+	return func(c *gin.Context) {
+		// Parse request body
 
-	var body PurchaseRequestBody
-	err := c.ShouldBindJSON(&body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		var body PurchaseRequestBody
+		err := c.ShouldBindJSON(&body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Fetch customer
+
+		customer := CustomerDocument{}
+		err = mongoClient.Database("rp_test").Collection("customers").FindOne(context.Background(),
+			map[string]any{
+				"customer_id": body.CustomerID,
+			}).Decode(&customer)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Fetch inventory
+
+		item := InventoryDocument{}
+		err = mongoClient.Database("rp_test").Collection("inventory").FindOne(context.Background(),
+			map[string]any{
+				"sku": body.SKU,
+			}).Decode(&item)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Check inventory stock
+
+		if item.Stock < body.Quantity {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough stock"})
+			return
+		}
+
+		// Run payment
+
+		total := body.Quantity * item.Price
+
+		_, err = paymentClient.RunTransaction(total, customer.WalletID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Create shipment
+
+		_, err = shippingClient.CreateShipment(body.CustomerID, body.SKU, body.Quantity)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Create new order document
+
+		order := OrderDocumentFields{
+			Customer: customer.ID,
+			Item:     item.ID,
+			Quantity: body.Quantity,
+			Total:    total,
+		}
+
+		_, err = mongoClient.Database("rp_test").Collection("orders").InsertOne(context.Background(), order)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Send "order in progress" email to customer
+
+		if err := emailClient.SendOrderInProgressAlert(body.CustomerID, body.SKU, body.Quantity); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Return response
+
+		c.JSON(http.StatusOK, gin.H{"message": "Purchase successful"})
 	}
-
-	// Fetch customer
-
-	customer := CustomerDocument{}
-	err = mongoClient.Database("rp_test").Collection("customers").FindOne(context.Background(),
-		map[string]any{
-			"customer_id": body.CustomerID,
-		}).Decode(&customer)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Fetch inventory
-
-	item := InventoryDocument{}
-	err = mongoClient.Database("rp_test").Collection("inventory").FindOne(context.Background(),
-		map[string]any{
-			"sku": body.SKU,
-		}).Decode(&item)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Check inventory stock
-
-	if item.Stock < body.Quantity {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough stock"})
-		return
-	}
-
-	// Run payment
-
-	total := body.Quantity * item.Price
-
-	_, err = paymentClient.RunTransaction(total, customer.WalletID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Create shipment
-
-	_, err = shippingClient.CreateShipment(body.CustomerID, body.SKU, body.Quantity)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Create new order document
-
-	order := OrderDocumentFields{
-		Customer: customer.ID,
-		Item:     item.ID,
-		Quantity: body.Quantity,
-		Total:    total,
-	}
-
-	_, err = mongoClient.Database("rp_test").Collection("orders").InsertOne(context.Background(), order)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Send "order in progress" email to customer
-
-	if err := emailClient.SendOrderInProgressAlert(body.CustomerID, body.SKU, body.Quantity); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Return response
-
-	c.JSON(http.StatusOK, gin.H{"message": "Purchase successful"})
 }
 
 // rp execution chains

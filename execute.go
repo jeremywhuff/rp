@@ -26,8 +26,8 @@ type StageError struct {
 
 type Logger interface {
 	LogMessage(msg string)
-	LogStageStart(print string)
-	LogStageComplete(success bool, elapsed time.Duration, print string)
+	LogStageStart(print string, in any)
+	LogStageComplete(success bool, elapsed time.Duration, print string, out any)
 	LogStageError(e *StageError)
 }
 
@@ -39,11 +39,11 @@ func (l DefaultLogger) LogMessage(msg string) {
 	log.Print(msg)
 }
 
-func (l DefaultLogger) LogStageStart(print string) {
+func (l DefaultLogger) LogStageStart(print string, in any) {
 	// Ignore
 }
 
-func (l DefaultLogger) LogStageComplete(success bool, elapsed time.Duration, print string) {
+func (l DefaultLogger) LogStageComplete(success bool, elapsed time.Duration, print string, out any) {
 
 	// Column 1: Success or failure
 	lbl := color.New(color.FgWhite).Add(color.BgGreen).Sprintf(" OK  ")
@@ -83,7 +83,7 @@ func Execute(ch *Chain, c *gin.Context, lgr Logger) (any, *StageError) {
 	for s != nil {
 
 		if lgr != nil {
-			lgr.LogStageStart(s.P())
+			lgr.LogStageStart(s.P(), d)
 		}
 
 		t := time.Now()
@@ -91,7 +91,7 @@ func Execute(ch *Chain, c *gin.Context, lgr Logger) (any, *StageError) {
 		d, e = s.Execute(d, c, lgr)
 
 		if lgr != nil {
-			lgr.LogStageComplete(e == nil, time.Since(t), s.P())
+			lgr.LogStageComplete(e == nil, time.Since(t), s.P(), d)
 			if e != nil {
 				lgr.LogStageError(e)
 			}
