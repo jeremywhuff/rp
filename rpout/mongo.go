@@ -34,15 +34,15 @@ func MongoFindOne(ctxDatabaseName string, collectionName string, opts ...MongoFi
 			if len(opts) > 0 && opts[0].Result != nil {
 				result = opts[0].Result
 			} else {
-				result = map[string]any{}
+				result = &map[string]any{}
 			}
 
-			err := coll.FindOne(context.Background(), in).Decode(&result)
+			err := coll.FindOne(context.Background(), in).Decode(result)
 			if err != nil {
 				return nil, err
 			}
 
-			return &result, nil
+			return result, nil
 		},
 
 		E: func(err error) *StageError {

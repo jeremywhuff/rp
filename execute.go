@@ -117,3 +117,16 @@ func (s *Stage) Execute(in any, c *gin.Context, lgr Logger) (any, *StageError) {
 
 	return out, nil
 }
+
+func MakeGinHandlerFunc(ch *Chain, lgr Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		o, e := Execute(ch, c, lgr)
+		if e != nil {
+			c.JSON(e.Code, e.Obj)
+			return
+		}
+
+		res := o.(*Response)
+		c.JSON(res.Code, res.Obj)
+	}
+}

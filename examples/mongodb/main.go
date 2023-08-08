@@ -20,13 +20,13 @@ import (
 // Clients for external APIs are payment, shipping, and email.
 //
 // Steps:
-// - Fetch customer
-// - Fetch inventory
-// - Check inventory stock
-// - Run payment
-// - Create shipment
-// - Create order
-// - Send email for receipt
+// 1) Fetch customer
+// 2) Fetch inventory
+// 3) Check inventory stock
+// 4) Run payment
+// 5) Create shipment
+// 6) Create order
+// 7) Send email for receipt
 
 // Database Documents
 
@@ -166,8 +166,14 @@ func main() {
 
 	// Set up and run router
 
+	// Without rp
+	// r := gin.Default()
+	// r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
+	// r.Run(":8081")
+
+	// With rp (sequential)
 	r := gin.Default()
-	r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
+	r.POST(Path, MiddlewareForRPHandler(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient))
 	r.Run(":8081")
 }
 
@@ -176,6 +182,7 @@ func main() {
 func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
+
 		// Parse request body
 
 		var body PurchaseRequestBody
@@ -262,19 +269,41 @@ func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, sh
 	}
 }
 
-// rp execution chains
+func MiddlewareForRPHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
-func parseChain() *Chain {
-	return First(
+	return func(c *gin.Context) {
+
+		c.Set("mongo.client.database", mongoClient.Database("rp_test"))
+		c.Set("payment.client", paymentClient)
+		c.Set("shipping.client", shippingClient)
+		c.Set("email.client", emailClient)
+
+		c.Next()
+	}
+}
+
+func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
+
+	// Define a short execution chain for each step
+	// These chains should be "atomic" in the sense that they represent a single task that isn't worth breaking down
+	// further. From these, we want to build upwards instead.
+	// As such, data flows within the chain between successive sequential stages by passing it forward as the return
+	// value of the stage execution function, then receiving it in the next stage's execution function as the in
+	// parameter.
+	// Data flows between chains by using the CtxSet and CtxGet stages to store and retrieve data from the gin.Context.
+	// This gives us flexibility to easily reorder or parallelize the execution of chains. The only requirement is that
+	// the CtxGet of a given key must come after the CtxSet of that key.
+
+	// First: Parse request body
+	parse := First(
 		// TODO: Should Bind take a pointer or a value?
 		Bind(&PurchaseRequestBody{})).Then(
 		CtxSet("req.body"))
-}
 
-func fetchCustomerChain() *Chain {
-	return First(
+	// 1) Fetch customer
+	fetchCustomer := First(
 
-		S(`fetch_customer_query(["req.body"].CustomerID) =>`,
+		S(`fetch_customer_query(["req.body"]) =>`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 				customerID := c.MustGet("req.body").(*PurchaseRequestBody).CustomerID
@@ -285,15 +314,14 @@ func fetchCustomerChain() *Chain {
 			})).Then(
 
 		rpout.MongoFindOne("mongo.client.database", "customers", rpout.MongoFindOneOptions{
-			Result: CustomerDocument{}})).Then(
+			Result: &CustomerDocument{}})).Then(
 
 		CtxSet("mongo.document.customer"))
-}
 
-func fetchInventoryChain() *Chain {
-	return First(
+	// 2) Fetch inventory
+	fetchInventory := First(
 
-		S(`fetch_inventory_query(["req.body"].SKU) =>`,
+		S(`fetch_inventory_query(["req.body"]) =>`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 				sku := c.MustGet("req.body").(*PurchaseRequestBody).SKU
@@ -304,34 +332,32 @@ func fetchInventoryChain() *Chain {
 			})).Then(
 
 		rpout.MongoFindOne("mongo.client.database", "inventory", rpout.MongoFindOneOptions{
-			Result: InventoryDocument{}})).Then(
+			Result: &InventoryDocument{}})).Then(
 
 		CtxSet("mongo.document.inventory"))
-}
 
-var ErrNotEnoughStock = errors.New("not enough stock")
+	// 3) Check inventory stock
+	checkStock := MakeChain(
 
-func checkInventoryStockChain() *Chain {
-	return MakeChain(
-
-		S(`check_inventory_stock(["mongo.document.inventory"].Stock, ["req.body"].Quantity)`,
+		S(`check_inventory_stock(["mongo.document.inventory"], ["req.body"])`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 				stock := c.MustGet("mongo.document.inventory").(*InventoryDocument).Stock
 				quantity := c.MustGet("req.body").(*PurchaseRequestBody).Quantity
 
 				if stock < quantity {
-					return nil, ErrNotEnoughStock
+					return nil, errors.New("not enough stock")
 				}
 				return nil, nil
 
 			})).Catch(BR, "Not enough stock")
-}
 
-func calculateTotalChain() *Chain {
-	return MakeChain(
+	// 4) Run payment
 
-		S(`calculate_total(["req.body"].Quantity, ["mongo.document.inventory"].Price) =>`,
+	// 4a) Calculate total
+	calculateTotal := MakeChain(
+
+		S(`calculate_total(["req.body"], ["mongo.document.inventory"]) =>`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 				quantity := c.MustGet("req.body").(*PurchaseRequestBody).Quantity
@@ -342,12 +368,11 @@ func calculateTotalChain() *Chain {
 			})).Then(
 
 		CtxSet("total"))
-}
 
-func runPaymentChain() *Chain {
-	return MakeChain(
+	// 4b) Run payment with paymentClient
+	runPayment := MakeChain(
 
-		S(`run_payment(["total"], ["mongo.document.customer"].WalletID)`,
+		S(`run_payment(["total"], ["mongo.document.customer"])`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 				paymentClient := c.MustGet("payment.client").(*PaymentClient)
@@ -361,12 +386,30 @@ func runPaymentChain() *Chain {
 				}
 				return nil, nil
 			}))
-}
 
-func createNewOrderChain() *Chain {
-	return First(
+	// 5) Create shipment
+	createShipment := MakeChain(
 
-		S(`create_new_order(["mongo.document.customer"].ID, ["mongo.document.inventory"].ID, ["req.body"].Quantity, ["total"])`,
+		S(`create_shipment(["req.body"])`,
+			func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+				shippingClient := c.MustGet("shipping.client").(*ShippingClient)
+
+				customerID := c.MustGet("req.body").(*PurchaseRequestBody).CustomerID
+				sku := c.MustGet("req.body").(*PurchaseRequestBody).SKU
+				quantity := c.MustGet("req.body").(*PurchaseRequestBody).Quantity
+
+				_, err := shippingClient.CreateShipment(customerID, sku, quantity)
+				if err != nil {
+					return nil, err
+				}
+				return nil, nil
+			}))
+
+	// 6) Create order
+	createOrder := First(
+
+		S(`create_new_order(["mongo.document.customer"], ["mongo.document.inventory"], ["req.body"], ["total"])`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 				customerID := c.MustGet("mongo.document.customer").(*CustomerDocument).ID
@@ -384,12 +427,11 @@ func createNewOrderChain() *Chain {
 			})).Then(
 
 		rpout.MongoInsert("mongo.client.database", "orders"))
-}
 
-func sendOrderInProgressAlertChain() *Chain {
-	return MakeChain(
+	// 7) Send email for receipt
+	sendOrderInProgressAlert := MakeChain(
 
-		S(`send_order_in_progress_alert(["req.body"].CustomerID, ["req.body"].SKU, ["req.body"].Quantity)`,
+		S(`send_order_in_progress_alert(["req.body"])`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
 
 				emailClient := c.MustGet("email.client").(*EmailClient)
@@ -404,10 +446,9 @@ func sendOrderInProgressAlertChain() *Chain {
 				}
 				return nil, nil
 			}))
-}
 
-func successResponseChain() *Chain {
-	return MakeChain(
+	// Last: Return response
+	successResponse := MakeChain(
 
 		S(`success_response()`,
 			func(in any, c *gin.Context, lgr Logger) (any, error) {
@@ -416,6 +457,22 @@ func successResponseChain() *Chain {
 					Code: http.StatusOK,
 					Obj:  gin.H{"message": "Purchase successful"},
 				}
-				return res, nil
+				return &res, nil
 			}))
+
+	// Build the full pipeline chain (sequential execution)
+	pipeline := InSequence(
+		parse,
+		fetchCustomer,
+		fetchInventory,
+		checkStock,
+		calculateTotal,
+		runPayment,
+		createShipment,
+		createOrder,
+		sendOrderInProgressAlert,
+		successResponse,
+	)
+
+	return MakeGinHandlerFunc(pipeline, DefaultLogger{})
 }
