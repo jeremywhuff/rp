@@ -141,6 +141,13 @@ func setUpDB(db *mongo.Database) error {
 
 	// Clear all orders
 	db.Collection("orders").DeleteMany(context.Background(), map[string]any{})
+	dummyOrders := make([]any, 200000)
+	for i := range dummyItems {
+		dummyOrders[i] = OrderDocument{
+			ID: primitive.NewObjectID(),
+		}
+	}
+	db.Collection("orders").InsertMany(context.Background(), dummyOrders)
 
 	return nil
 }
@@ -478,16 +485,32 @@ func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClie
 			}))
 
 	// Build the full pipeline chain (sequential execution)
+	// pipeline := InSequence(
+	// 	parse,
+	// 	fetchCustomer,
+	// 	fetchInventory,
+	// 	checkStock,
+	// 	calculateTotal,
+	// 	runPayment,
+	// 	createShipment,
+	// 	createOrder,
+	// 	sendOrderInProgressAlert,
+	// 	successResponse,
+	// )
+
+	// Build the full pipeline chain (parallel execution)
 	pipeline := InSequence(
 		parse,
-		fetchCustomer,
-		fetchInventory,
+		InParallel(
+			fetchCustomer,
+			fetchInventory),
 		checkStock,
 		calculateTotal,
 		runPayment,
-		createShipment,
-		createOrder,
-		sendOrderInProgressAlert,
+		InParallel(
+			createShipment,
+			createOrder,
+			sendOrderInProgressAlert),
 		successResponse,
 	)
 
