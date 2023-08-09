@@ -195,9 +195,9 @@ func main() {
 	// r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
 	// r.Run(":8081")
 
-	// With rp (sequential)
+	// With rp
 	r := gin.Default()
-	r.POST(Path, MiddlewareForRPHandler(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient))
+	r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient))
 	r.Run(":8081")
 }
 
@@ -293,7 +293,7 @@ func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, sh
 	}
 }
 
-func MiddlewareForRPHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
+func MiddlewareForRPHandlers(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
@@ -304,6 +304,243 @@ func MiddlewareForRPHandler(mongoClient *mongo.Client, paymentClient *PaymentCli
 
 		c.Next()
 	}
+}
+
+// StageName generates a string such as
+// `  => my_stage_name(["ctxVar"]) => ["newCtxVar"]`
+// from the inputs StageName(true, "my_stage_name", []string{"ctxVar"}, []string{"newCtxVar"}, false)
+func StageName(usesInParam bool, name string, ctxDependencies []string, ctxOutputs []string, returnsAValue bool) string {
+
+	inArrow := "  => "
+	if !usesInParam {
+		inArrow = ""
+	}
+
+	params := "("
+	for i, dep := range ctxDependencies {
+		params += "[\"" + dep + "\"]"
+		if i < len(ctxDependencies)-1 {
+			params += ", "
+		}
+	}
+	params += ")"
+
+	funcString := name + params
+
+	ctxOutString := ""
+	if len(ctxOutputs) > 0 {
+		ctxOutString = " => "
+		for i, out := range ctxOutputs {
+			ctxOutString += "[\"" + out + "\"]"
+			if i < len(ctxOutputs)-1 {
+				ctxOutString += ", "
+			}
+		}
+	}
+
+	outArrow := " =>"
+	if !returnsAValue {
+		outArrow = ""
+	}
+
+	return inArrow + funcString + ctxOutString + outArrow
+}
+
+// FuncStr generates a string such as
+// `my_stage_name(["ctxVar1"], ["ctxVar2"])`
+// from the inputs FuncStr("my_stage_name", "ctxVar1", "ctxVar2")
+func FuncStr(name string, ctxDependencies ...string) string {
+
+	params := "("
+	for i, dep := range ctxDependencies {
+		params += "[\"" + dep + "\"]"
+		if i < len(ctxDependencies)-1 {
+			params += ", "
+		}
+	}
+	params += ")"
+
+	return name + params
+}
+
+// CtxOutStr generates a string such as
+// ` => ["ctxOutVar1"], ["ctxOutVar2"]`
+// from the inputs CtxOutStr("ctxOutVar1", "ctxOutVar2")
+func CtxOutStr(ctxOutputs ...string) string {
+
+	ctxOut := " => "
+	for i, out := range ctxOutputs {
+		ctxOut += "[\"" + out + "\"]"
+		if i < len(ctxOutputs)-1 {
+			ctxOut += ", "
+		}
+	}
+
+	return ctxOut
+}
+
+func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
+
+	parse := MakeChain(S(
+		FuncStr("parse")+CtxOutStr("req.body"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			var body PurchaseRequestBody
+			err := c.ShouldBindJSON(&body)
+			if err != nil {
+				return nil, err
+			}
+
+			c.Set("req.body", body)
+			return nil, nil
+		}))
+
+	fetchCustomer := MakeChain(S(
+		FuncStr("fetch_customer", "req.body")+CtxOutStr("mongo.document.customer"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			body := c.MustGet("req.body").(*PurchaseRequestBody)
+
+			customer := CustomerDocument{}
+			err := mongoClient.Database("rp_test").Collection("customers").FindOne(context.Background(),
+				map[string]any{
+					"customer_id": body.CustomerID,
+				}).Decode(&customer)
+			if err != nil {
+				return nil, err
+			}
+
+			c.Set("mongo.document.customer", &customer)
+			return nil, nil
+		}))
+
+	fetchInventory := MakeChain(S(
+		FuncStr("fetch_inventory", "req.body")+CtxOutStr("mongo.document.inventory"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			body := c.MustGet("req.body").(*PurchaseRequestBody)
+
+			item := InventoryDocument{}
+			err := mongoClient.Database("rp_test").Collection("inventory").FindOne(context.Background(),
+				map[string]any{
+					"sku": body.SKU,
+				}).Decode(&item)
+			if err != nil {
+				return nil, err
+			}
+
+			c.Set("mongo.document.inventory", &item)
+			return nil, nil
+		}))
+
+	checkStock := MakeChain(S(
+		FuncStr("check_stock", "mongo.document.inventory", "req.body"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			item := c.MustGet("mongo.document.inventory").(*InventoryDocument)
+			body := c.MustGet("req.body").(*PurchaseRequestBody)
+
+			if item.Stock < body.Quantity {
+				return nil, errors.New("Not enough stock")
+			}
+
+			return nil, nil
+		}))
+
+	runPayment := MakeChain(S(
+		FuncStr("run_payment", "req.body", "mongo.document.inventory", "mongo.document.customer")+CtxOutStr("total"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			body := c.MustGet("req.body").(*PurchaseRequestBody)
+			item := c.MustGet("mongo.document.inventory").(*InventoryDocument)
+			customer := c.MustGet("mongo.document.customer").(*CustomerDocument)
+
+			total := body.Quantity * item.Price
+			c.Set("total", total)
+
+			_, err := paymentClient.RunTransaction(total, customer.WalletID)
+			if err != nil {
+				return nil, err
+			}
+
+			return nil, nil
+		}))
+
+	createShipment := MakeChain(S(
+		FuncStr("create_shipment", "req.body"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			body := c.MustGet("req.body").(*PurchaseRequestBody)
+
+			_, err := shippingClient.CreateShipment(body.CustomerID, body.SKU, body.Quantity)
+			if err != nil {
+				return nil, err
+			}
+
+			return nil, nil
+		}))
+
+	createOrder := MakeChain(S(
+		FuncStr("create_order", "mongo.document.customer", "mongo.document.inventory", "req.body", "total"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			customer := c.MustGet("mongo.document.customer").(*CustomerDocument)
+			item := c.MustGet("mongo.document.inventory").(*InventoryDocument)
+			body := c.MustGet("req.body").(*PurchaseRequestBody)
+			total := c.MustGet("total").(int)
+
+			order := OrderDocumentFields{
+				Customer: customer.ID,
+				Item:     item.ID,
+				Quantity: body.Quantity,
+				Total:    total,
+			}
+
+			_, err := mongoClient.Database("rp_test").Collection("orders").InsertOne(context.Background(), order)
+			if err != nil {
+				return nil, err
+			}
+
+			return nil, nil
+		}))
+
+	sendEmail := MakeChain(S(
+		FuncStr("send_email", "req.body"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			body := c.MustGet("req.body").(*PurchaseRequestBody)
+
+			if err := emailClient.SendOrderInProgressAlert(body.CustomerID, body.SKU, body.Quantity); err != nil {
+				return nil, err
+			}
+
+			return nil, nil
+		}))
+
+	respond := MakeChain(S(
+		FuncStr("respond"),
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+			res := Response{
+				Code: http.StatusOK,
+				Obj:  gin.H{"message": "Purchase successful"},
+			}
+			return &res, nil
+		}))
+
+	// Build the full pipeline chain
+	pipeline := InSequence(
+		parse,
+		fetchCustomer,
+		fetchInventory,
+		checkStock,
+		runPayment,
+		createShipment,
+		createOrder,
+		sendEmail,
+		respond,
+	)
+
+	return MakeGinHandlerFunc(pipeline, DefaultLogger{})
 }
 
 func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
