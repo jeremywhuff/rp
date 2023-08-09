@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +17,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // Endpoint is to purchase an item.
@@ -368,6 +373,10 @@ func FuncStr(name string, ctxDependencies ...string) string {
 // from the inputs CtxOutStr("ctxOutVar1", "ctxOutVar2")
 func CtxOutStr(ctxOutputs ...string) string {
 
+	if len(ctxOutputs) == 0 {
+		return ""
+	}
+
 	ctxOut := " => "
 	for i, out := range ctxOutputs {
 		ctxOut += "[\"" + out + "\"]"
@@ -541,6 +550,162 @@ func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient
 	)
 
 	return MakeGinHandlerFunc(pipeline, DefaultLogger{})
+}
+
+// This function migrates source code from the style in PurchaseHandler to the style in PurchaseHandlerDirectMigrationToRP.
+// For example, it converts this:
+//
+//	// Fetch customer
+//	customer := CustomerDocument{}
+//	err = mongoClient.Database("rp_test").Collection("customers").FindOne(context.Background(),
+//		map[string]any{
+//			"customer_id": body.CustomerID,
+//		}).Decode(&customer)
+//	if err != nil {
+//		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+//		return
+//	}
+//
+// to this:
+//
+//	fetchCustomer := MakeChain(S(
+//		FuncStr("fetch_customer", "req.body")+CtxOutStr("mongo.document.customer"),
+//		func(in any, c *gin.Context, lgr Logger) (any, error) {
+//
+//			body := c.MustGet("req.body").(*PurchaseRequestBody)
+//
+//			customer := CustomerDocument{}
+//			err := mongoClient.Database("rp_test").Collection("customers").FindOne(context.Background(),
+//				map[string]any{
+//					"customer_id": body.CustomerID,
+//				}).Decode(&customer)
+//			if err != nil {
+//				return nil, err
+//			}
+//
+//			c.Set("mongo.document.customer", &customer)
+//			return nil, nil
+//		}))
+func MigrateToRP(src string, ctxDependencies []string, ctxOutputs []string, ctxOutputVars []string) (string, error) {
+
+	if len(ctxOutputs) != len(ctxOutputVars) {
+		return "", errors.New("ctxOutputs and ctxOutputVars must have the same length")
+	}
+
+	// Define a template for the migration
+	tmpl := `{{.StageName}} := MakeChain(S(
+		{{.FuncStr}}+{{.CtxOutStr}},
+		func(in any, c *gin.Context, lgr Logger) (any, error) {
+
+			{{.Body}}
+
+			{{.SetCtx}}
+
+			return nil, nil
+		}))`
+
+	// Define a struct to hold the template data
+	type TemplateData struct {
+		StageName string
+		FuncStr   string
+		CtxOutStr string
+		Body      string
+		SetCtx    string
+	}
+
+	// Fill in each of the template's fields
+
+	firstCommentLine := ""
+	firstCommentLineNumber := -1
+	regex := regexp.MustCompile("[^a-zA-Z0-9_ ]+")
+	for i, line := range strings.Split(src, "\n") {
+		if strings.HasPrefix(line, "//") && regex.ReplaceAllString(line, "") != "" {
+			firstCommentLine = strings.TrimSpace(line[2:])
+			firstCommentLineNumber = i
+			break
+		}
+	}
+	srcWithoutFirstCommentLine := ""
+	if firstCommentLine == "" {
+		firstCommentLine = "unnamed stage"
+		srcWithoutFirstCommentLine = src
+	} else {
+		for i, line := range strings.Split(src, "\n") {
+			if i != firstCommentLineNumber {
+				srcWithoutFirstCommentLine += line + "\n"
+			}
+		}
+	}
+
+	setCtx := ""
+	for i, out := range ctxOutputs {
+		setCtx += "c.Set(\"" + out + "\", " + ctxOutputVars[i] + ")"
+		if i < len(ctxOutputs)-1 {
+			setCtx += "\n"
+		}
+	}
+
+	data := TemplateData{
+		StageName: camelCase(firstCommentLine),
+		FuncStr:   FuncStr(funcNameFormat(firstCommentLine), ctxDependencies...),
+		CtxOutStr: CtxOutStr(ctxOutputs...),
+		Body:      srcWithoutFirstCommentLine,
+		SetCtx:    setCtx,
+	}
+
+	// Execute the template
+	t, err := template.New("migration").Parse(tmpl)
+	if err != nil {
+		return "", err
+	}
+	var out strings.Builder
+	err = t.Execute(&out, data)
+	if err != nil {
+		return "", err
+	}
+
+	return out.String(), nil
+}
+
+func camelCase(s string) string {
+
+	// Remove all characters that are not alphanumeric or spaces or underscores
+	s = regexp.MustCompile("[^a-zA-Z0-9_ ]+").ReplaceAllString(s, "")
+
+	// Replace all underscores with spaces
+	s = strings.ReplaceAll(s, "_", " ")
+
+	// Title case s
+	s = cases.Title(language.AmericanEnglish, cases.NoLower).String(s)
+
+	// Remove all spaces
+	s = strings.ReplaceAll(s, " ", "")
+
+	// Lowercase the first letter
+	if len(s) > 0 {
+		s = strings.ToLower(s[:1]) + s[1:]
+	}
+
+	return s
+}
+
+func funcNameFormat(s string) string {
+
+	// Remove all characters that are not alphanumeric or spaces or underscores
+	s = regexp.MustCompile("[^a-zA-Z0-9_ ]+").ReplaceAllString(s, "")
+
+	// Replace all underscores with spaces
+	s = strings.ReplaceAll(s, "_", " ")
+
+	// Convert all alphabetic characters to lowercase
+	s = strings.ToLower(s)
+
+	out := ""
+	for _, word := range strings.Split(s, " ") {
+		out += word
+	}
+
+	return out
 }
 
 func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
