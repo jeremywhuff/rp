@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -89,37 +90,53 @@ func (cl *EmailClient) SendOrderInProgressAlert(customerID string, SKU string, q
 
 func setUpDB(db *mongo.Database) error {
 
-	// Create the test customer, if needed
-	rslt := db.Collection("customers").FindOne(context.Background(),
-		map[string]any{"customer_id": "C13579"})
-	if e := rslt.Err(); e == mongo.ErrNoDocuments {
-		_, err := db.Collection("customers").InsertOne(context.Background(), CustomerDocument{
+	// Clear all customers, add a bunch of dummy records, and create the test customer
+	db.Collection("customers").DeleteMany(context.Background(), map[string]any{})
+	dummyCustomers := make([]any, 100000)
+	for i := range dummyCustomers {
+		indexString := fmt.Sprintf("%06d", i)
+		dummyCustomers[i] = CustomerDocument{
 			ID:         primitive.NewObjectID(),
-			CustomerID: "C13579",
-			FirstName:  "Sandra",
-			LastName:   "Hernandez",
-			Email:      "sandra.hernandez@example.com",
-			WalletID:   "W24680",
-		})
-		if err != nil {
-			return err
+			CustomerID: "C" + indexString,
+			FirstName:  "First" + indexString,
+			LastName:   "Last" + indexString,
+			Email:      "first" + indexString + "@example.com",
+			WalletID:   "W" + indexString,
 		}
 	}
+	db.Collection("customers").InsertMany(context.Background(), dummyCustomers)
+	db.Collection("customers").InsertOne(context.Background(), CustomerDocument{
+		ID:         primitive.NewObjectID(),
+		CustomerID: "C975310",
+		FirstName:  "Sandra",
+		LastName:   "Hernandez",
+		Email:      "sandra.hernandez@example.com",
+		WalletID:   "W246802",
+	})
 
-	// Create the test inventory item, if needed
-	rslt = db.Collection("inventory").FindOne(context.Background(),
-		map[string]any{"sku": "SKU159260"})
-	if e := rslt.Err(); e == mongo.ErrNoDocuments {
-		_, err := db.Collection("inventory").InsertOne(context.Background(), InventoryDocument{
+	// Clear all inventory items, add a bunch of dummy records, and create the test item
+	db.Collection("inventory").DeleteMany(context.Background(), map[string]any{})
+	dummyItems := make([]any, 50000)
+	for i := range dummyItems {
+		indexString := fmt.Sprintf("%06d", i)
+		dummyItems[i] = InventoryDocument{
 			ID:    primitive.NewObjectID(),
-			SKU:   "SKU159260",
-			Name:  "Wonder Widget",
-			Price: 3500,
-			Stock: 5,
-		})
-		if err != nil {
-			return err
+			SKU:   "SKU" + indexString,
+			Name:  "Product" + indexString,
+			Price: 2000,
+			Stock: 15,
 		}
+	}
+	db.Collection("inventory").InsertMany(context.Background(), dummyItems)
+	_, err := db.Collection("inventory").InsertOne(context.Background(), InventoryDocument{
+		ID:    primitive.NewObjectID(),
+		SKU:   "SKU159260",
+		Name:  "Wonder Widget",
+		Price: 3500,
+		Stock: 5,
+	})
+	if err != nil {
+		return err
 	}
 
 	// Clear all orders
