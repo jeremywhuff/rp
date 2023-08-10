@@ -140,25 +140,41 @@ func BreakIntoSections(src string) ([]string, error) {
 		}
 
 		if stmt, ok := n.(*ast.IfStmt); ok {
-			if call, ok := stmt.Cond.(*ast.BinaryExpr); ok {
-				if x, ok := call.X.(*ast.Ident); ok {
-					if y, ok := call.Y.(*ast.Ident); ok {
-						if x.Name == "err" && y.Name == "nil" {
-							log.Print("Found if err != nil")
-							if stmt.Body != nil {
-								log.Print("Found body")
-								sections = append(sections, src[pos:stmt.Body.End()-1])
-								pos = stmt.Body.End()
-							}
-						}
-					}
-				}
+			sect, p, err := findcJSON(src, pos, stmt)
+			if err == nil {
+				sections = append(sections, sect)
+				pos = p
 			}
 		}
 		return true
 	})
 
 	return sections, nil
+}
+
+func findcJSON(src string, pos token.Pos, stmt *ast.IfStmt) (string, token.Pos, error) {
+	var str string
+	var next token.Pos
+	ast.Inspect(stmt, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if exp, ok := call.Fun.(*ast.SelectorExpr); ok {
+				if x, ok := exp.X.(*ast.Ident); ok {
+					if x.Name == "c" && exp.Sel != nil && exp.Sel.Name == "JSON" {
+						log.Printf("Found c.JSON() at %d", stmt.Body.End())
+						str = src[pos : stmt.Body.End()-1]
+						next = stmt.Body.End()
+					}
+				}
+			}
+		}
+		return true
+	})
+	if str == "" {
+		log.Print("No c.JSON() found")
+		return "", 0, errors.New("no c.JSON() found")
+	}
+	// log.Printf("str: %s", str)
+	return str, next, nil
 }
 
 // This function migrates source code from the style in PurchaseHandler to the style in PurchaseHandlerDirectMigrationToRP.
