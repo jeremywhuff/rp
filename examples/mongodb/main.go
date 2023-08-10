@@ -388,6 +388,23 @@ func CtxOutStr(ctxOutputs ...string) string {
 	return ctxOut
 }
 
+// Thoughts on next steps:
+// - Create a function that uses the ast package to break a large amount of source code into sections, breaking at the
+//       if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return } statements.
+// - Create a function that uses the ast package to find undeclared variable names for these subsections of code.
+// - Create a function that loops through each subsection starting with the last one. For each subsection, it should
+//       add c.Get() calls at the top for each undeclared variable name and then append the variable name to a slice of
+//       variable names that need a matching c.Set call to be created in another subsection.
+// - Create a function that uses the ast package to detect if a given variable name is assigned for these subsections
+//       of code and, if so, returns the line number of the last assignment statement.
+// - Add this function into the looping function to find the last assignment statement in the last subsection that
+//       contains an assignment of one of the variables in the slice of variable names that need a matching c.Set call.
+//       Then, add a c.Set call immediately after that line within that subsection and remove it from the slice.
+// - Also in the looping function, replace the if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error":
+//       err.Error()}); return } calls with if err != nil { return err } calls.
+// - When each of the subsections has all of the modifications, it should call MigrateToRP to create a chain
+//       declaration of the form chainName := MakeChain(S(...)).
+
 func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
 	parse := MakeChain(S(
