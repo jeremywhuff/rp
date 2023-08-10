@@ -87,7 +87,9 @@ func main() {
 		map[string]any{
 			"sku": body.SKU,
 		}).Decode(&item)
-	if err != nil {
+	if err == nil {
+		log.Println("Hello")
+	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -160,9 +162,15 @@ func findcJSON(src string, pos token.Pos, stmt *ast.IfStmt) (string, token.Pos, 
 			if exp, ok := call.Fun.(*ast.SelectorExpr); ok {
 				if x, ok := exp.X.(*ast.Ident); ok {
 					if x.Name == "c" && exp.Sel != nil && exp.Sel.Name == "JSON" {
-						log.Printf("Found c.JSON() at %d", stmt.Body.End())
-						str = src[pos : stmt.Body.End()-1]
-						next = stmt.Body.End()
+						if stmt.Else != nil {
+							log.Printf("Found c.JSON() at %d", stmt.Else.End())
+							str = src[pos : stmt.Else.End()-1]
+							next = stmt.Else.End()
+						} else {
+							log.Printf("Found c.JSON() at %d", stmt.Body.End())
+							str = src[pos : stmt.Body.End()-1]
+							next = stmt.Body.End()
+						}
 					}
 				}
 			}
@@ -170,10 +178,8 @@ func findcJSON(src string, pos token.Pos, stmt *ast.IfStmt) (string, token.Pos, 
 		return true
 	})
 	if str == "" {
-		log.Print("No c.JSON() found")
 		return "", 0, errors.New("no c.JSON() found")
 	}
-	// log.Printf("str: %s", str)
 	return str, next, nil
 }
 
