@@ -111,8 +111,14 @@ func main() {
 
 	for _, section := range sections {
 		log.Println(section)
+		log.Println("Declarations:")
+		decls, _ := findDeclarationsInSubsection(section)
+		for _, decl := range decls {
+			log.Println(decl)
+		}
 		log.Println("**********")
 	}
+
 }
 
 //   - Create a function that uses the ast package to break a large amount of source code into sections, breaking at the
@@ -154,13 +160,21 @@ func BreakIntoSections(src string) ([]string, error) {
 	return sections, nil
 }
 
+// findcJSON finds the c.JSON() call in the given if statement and returns the
+// section of code that contains it, the position of the end of the section, and
+// any error that occurred.
+// TODO: Can this handle if with multiple else if and else statements?
 func findcJSON(src string, pos token.Pos, stmt *ast.IfStmt) (string, token.Pos, error) {
 	var str string
 	var next token.Pos
 	ast.Inspect(stmt, func(n ast.Node) bool {
+		// Walk through each node
 		if call, ok := n.(*ast.CallExpr); ok {
+			// Node is a call expression
 			if exp, ok := call.Fun.(*ast.SelectorExpr); ok {
+				// The call expression's function is a selector expression
 				if x, ok := exp.X.(*ast.Ident); ok {
+					// The selector expression's receiver is an identifier
 					if x.Name == "c" && exp.Sel != nil && exp.Sel.Name == "JSON" {
 						if stmt.Else != nil {
 							log.Printf("Found c.JSON() at %d", stmt.Else.End())
@@ -181,6 +195,72 @@ func findcJSON(src string, pos token.Pos, stmt *ast.IfStmt) (string, token.Pos, 
 		return "", 0, errors.New("no c.JSON() found")
 	}
 	return str, next, nil
+}
+
+func findDeclarationsInSubsection(src string) ([]string, error) {
+
+	// Parse the source code
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", wrapSubsection(src), 0)
+	if err != nil {
+		return nil, err
+	}
+
+	var declarations []string
+	ast.Inspect(f, func(n ast.Node) bool {
+
+		// Declaration via assignment with :=
+		if ident, ok := n.(*ast.AssignStmt); ok {
+			if ident.Tok == token.DEFINE {
+				for _, name := range ident.Lhs {
+					if ident, ok := name.(*ast.Ident); ok {
+						declarations = append(declarations, ident.Name)
+					}
+				}
+			}
+		}
+
+		// Declaration via var
+		if ident, ok := n.(*ast.GenDecl); ok {
+			if ident.Tok == token.VAR {
+				for _, spec := range ident.Specs {
+					if value, ok := spec.(*ast.ValueSpec); ok {
+						for _, name := range value.Names {
+							declarations = append(declarations, name.Name)
+						}
+					}
+				}
+			}
+		}
+
+		return true
+	})
+
+	return declarations, nil
+}
+
+func wrapSubsection(src string) string {
+
+	return `package main
+
+	import (
+		"context"
+		"errors"
+		"fmt"
+		"log"
+		"net/http"
+		"time"
+	
+		"github.com/gin-gonic/gin"
+		. "github.com/jeremywhuff/rp"
+		"github.com/jeremywhuff/rp/rpout"
+		"go.mongodb.org/mongo-driver/bson/primitive"
+		"go.mongodb.org/mongo-driver/mongo"
+		"go.mongodb.org/mongo-driver/mongo/options"
+	)
+
+	func main() {
+` + src + `}`
 }
 
 // This function migrates source code from the style in PurchaseHandler to the style in PurchaseHandlerDirectMigrationToRP.
