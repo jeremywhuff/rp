@@ -109,13 +109,27 @@ func main() {
 
 	log.Printf("Found %d sections", len(sections))
 
+	vars := []string{}
+
 	for _, section := range sections {
+
 		log.Println(section)
+
+		refs, _ := findReferencesInSubsection(section, vars)
+		log.Println("References:")
+		for _, ref := range refs {
+			log.Println(ref)
+		}
+
 		log.Println("Declarations:")
 		decls, _ := findDeclarationsInSubsection(section)
 		for _, decl := range decls {
 			log.Println(decl)
+			vars = append(vars, decl)
 		}
+
+		log.Printf("Current vars: %v", vars)
+
 		log.Println("**********")
 	}
 
@@ -237,6 +251,35 @@ func findDeclarationsInSubsection(src string) ([]string, error) {
 	})
 
 	return declarations, nil
+}
+
+func findReferencesInSubsection(src string, vars []string) ([]string, error) {
+
+	// Parse the source code
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", wrapSubsection(src), 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find all references to variables with names in vars.
+	// If the reference is found, add it to the references slice and removed it from the vars slice.
+	references := []string{}
+	ast.Inspect(f, func(n ast.Node) bool {
+
+		if ident, ok := n.(*ast.Ident); ok {
+			for _, v := range vars {
+				if ident.Name == v {
+					references = append(references, ident.Name)
+					// vars = append(vars[:i], vars[i+1:]...)
+				}
+			}
+		}
+
+		return true
+	})
+
+	return references, nil
 }
 
 func wrapSubsection(src string) string {
