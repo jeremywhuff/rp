@@ -16,11 +16,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Endpoint is to purchase an item.
-// Collections are customers, inventory, and orders.
-// Clients for external APIs are payment, shipping, and email.
+// This example demonstrates a simplified ecommerce endpoint to purchase an item.
+// See tutorial for more details. https://medium.com/@jeremywhuff/950a10c3c31f
 //
-// Steps:
+// The endpoint will be implemented in four different ways:
+// A) Without rp,
+// B) As a direct migration into rp,
+// C) A tidied up implementation in rp, and
+// D) With concurrency optimizations in rp.
+//
+// Every implementation will take these steps:
 // 1) Fetch customer
 // 2) Fetch inventory
 // 3) Check inventory stock
@@ -28,6 +33,66 @@ import (
 // 5) Create shipment
 // 6) Create order
 // 7) Send email for receipt
+
+// Purchase Route - These variables define the example route
+
+var Method = http.MethodPost
+var Path = "/purchase"
+
+type PurchaseRequestBody struct {
+	CustomerID string `json:"customer_id"`
+	SKU        string `json:"sku"`
+	Quantity   int    `json:"quantity"`
+}
+
+func main() {
+
+	// Connect to MongoDB
+
+	// Set up a DB to connect to, for instance a local one like this - https://brandonblankenstein.medium.com/install-and-run-mongodb-on-mac-1604ae750e57
+	// MAKE SURE this DB is empty, as it will be cleared and populated with dummy data
+	mongoDBURI := "" //"mongodb://localhost:27017"
+
+	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoDBURI))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer mongoClient.Disconnect(context.Background())
+
+	// Set up database
+
+	err = setUpDB(mongoClient.Database("rp_test"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Set up dummy clients
+
+	paymentClient := &PaymentClient{}
+	shippingClient := &ShippingClient{}
+	emailClient := &EmailClient{}
+
+	// Set up and run router (Comment and uncomment as necessary)
+	r := gin.Default()
+
+	// A) Without rp
+	// r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
+
+	// B) Direct migration to rp
+	// r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerDirectMigrationToRP(mongoClient, paymentClient, shippingClient, emailClient))
+
+	// C) Tidied up implementation in rp
+	// r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient, false))
+
+	// D) With concurrency optimizations in rp
+	r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient, true))
+
+	r.Run(":8081")
+}
+
+// *** MongoDB ***
+
+// Collections are "customers", "inventory", and "orders".
 
 // Database Documents
 
@@ -58,32 +123,6 @@ type OrderDocumentFields struct {
 	Item     primitive.ObjectID `bson:"item"`
 	Quantity int                `bson:"quantity"`
 	Total    int                `bson:"total"` // in cents
-}
-
-// Dummy Clients
-
-type PaymentClient struct{}
-
-// Charges the customer's card on file
-func (cl *PaymentClient) RunTransaction(amount int, walletID string) (string, error) {
-	time.Sleep(100 * time.Millisecond)
-	return "5678", nil
-}
-
-type ShippingClient struct{}
-
-// Initializes a shipment with the shipping provider
-func (cl *ShippingClient) CreateShipment(customerID string, SKU string, quantity int) (string, error) {
-	time.Sleep(70 * time.Millisecond)
-	return "1234", nil
-}
-
-type EmailClient struct{}
-
-// Sends an email to the customer to say their order is in progress
-func (cl *EmailClient) SendOrderInProgressAlert(customerID string, SKU string, quantity int) error {
-	time.Sleep(80 * time.Millisecond)
-	return nil
 }
 
 // Database initialization
@@ -152,59 +191,38 @@ func setUpDB(db *mongo.Database) error {
 	return nil
 }
 
-// Purchase Route
+// *** API Clients ***
 
-var Method = http.MethodPost
-var Path = "/purchase"
+// Dummy clients for external APIs: payment, shipping, and email.
+// They always succeed after a delay.
 
-type PurchaseRequestBody struct {
-	CustomerID string `json:"customer_id"`
-	SKU        string `json:"sku"`
-	Quantity   int    `json:"quantity"`
+type PaymentClient struct{}
+
+// Charges the customer's card on file
+func (cl *PaymentClient) RunTransaction(amount int, walletID string) (string, error) {
+	time.Sleep(100 * time.Millisecond)
+	return "5678", nil
 }
 
-func main() {
+type ShippingClient struct{}
 
-	// Connect to MongoDB
-
-	// Set up a DB to connec to, for instance a local one like this - https://brandonblankenstein.medium.com/install-and-run-mongodb-on-mac-1604ae750e57
-	// MAKE SURE this DB is empty, as it will be cleared and populated with dummy data
-	mongoDBURI := "" //"mongodb://localhost:27017"
-
-	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoDBURI))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer mongoClient.Disconnect(context.Background())
-
-	// Set up database
-
-	err = setUpDB(mongoClient.Database("rp_test"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Set up dummy clients
-
-	paymentClient := &PaymentClient{}
-	shippingClient := &ShippingClient{}
-	emailClient := &EmailClient{}
-
-	// Set up and run router
-
-	// Without rp
-	// r := gin.Default()
-	// r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
-	// r.Run(":8081")
-
-	// With rp
-	r := gin.Default()
-	r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient))
-	r.Run(":8081")
+// Initializes a shipment with the shipping provider
+func (cl *ShippingClient) CreateShipment(customerID string, SKU string, quantity int) (string, error) {
+	time.Sleep(70 * time.Millisecond)
+	return "1234", nil
 }
+
+type EmailClient struct{}
+
+// Sends an email to the customer to say their order is in progress
+func (cl *EmailClient) SendOrderInProgressAlert(customerID string, SKU string, quantity int) error {
+	time.Sleep(80 * time.Millisecond)
+	return nil
+}
+
+// *** Handlers ***
 
 // Purchase handler without rp
-
 func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
@@ -295,6 +313,7 @@ func PurchaseHandler(mongoClient *mongo.Client, paymentClient *PaymentClient, sh
 	}
 }
 
+// Required middleware for all rp handlers
 func MiddlewareForRPHandlers(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
@@ -308,6 +327,7 @@ func MiddlewareForRPHandlers(mongoClient *mongo.Client, paymentClient *PaymentCl
 	}
 }
 
+// Purchase handler with rp, direct migration
 func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
 
 	parse := MakeChain(S(
@@ -472,7 +492,8 @@ func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient
 	return MakeGinHandlerFunc(pipeline, DefaultLogger{})
 }
 
-func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient) gin.HandlerFunc {
+// Tidied up handler in rp, which can be set to run with or without concurrency optimizations
+func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient, withConcurrency bool) gin.HandlerFunc {
 
 	// Define a short execution chain for each step
 	// These chains should be "atomic" in the sense that they represent a single task that isn't worth breaking down
@@ -650,35 +671,37 @@ func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClie
 				return &res, nil
 			}))
 
-	// Build the full pipeline chain (sequential execution)
-	// pipeline := InSequence(
-	// 	parse,
-	// 	fetchCustomer,
-	// 	fetchInventory,
-	// 	checkStock,
-	// 	calculateTotal,
-	// 	runPayment,
-	// 	createShipment,
-	// 	createOrder,
-	// 	sendOrderInProgressAlert,
-	// 	successResponse,
-	// )
-
-	// Build the full pipeline chain (parallel execution)
-	pipeline := InSequence(
-		parse,
-		InParallel(
+	// Build the full pipeline chain
+	pipeline := &Chain{}
+	if !withConcurrency {
+		pipeline = InSequence(
+			parse,
 			fetchCustomer,
-			fetchInventory),
-		checkStock,
-		calculateTotal,
-		runPayment,
-		InParallel(
+			fetchInventory,
+			checkStock,
+			calculateTotal,
+			runPayment,
 			createShipment,
 			createOrder,
-			sendOrderInProgressAlert),
-		successResponse,
-	)
+			sendOrderInProgressAlert,
+			successResponse,
+		)
+	} else {
+		pipeline = InSequence(
+			parse,
+			InParallel(
+				fetchCustomer,
+				fetchInventory),
+			checkStock,
+			calculateTotal,
+			runPayment,
+			InParallel(
+				createShipment,
+				createOrder,
+				sendOrderInProgressAlert),
+			successResponse,
+		)
+	}
 
 	return MakeGinHandlerFunc(pipeline, DefaultLogger{})
 }
