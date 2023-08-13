@@ -167,7 +167,9 @@ func main() {
 
 	// Connect to MongoDB
 
-	mongoDBURI := "mongodb://localhost:27017"
+	// Set up a DB to connec to, for instance a local one like this - https://brandonblankenstein.medium.com/install-and-run-mongodb-on-mac-1604ae750e57
+	// MAKE SURE this DB is empty, as it will be cleared and populated with dummy data
+	mongoDBURI := "" //"mongodb://localhost:27017"
 
 	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoDBURI))
 	if err != nil {
