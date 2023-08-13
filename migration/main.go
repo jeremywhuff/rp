@@ -1,5 +1,7 @@
 package main
 
+// IGNORE THIS FILE. IT IS NOT USED. See notes below.
+
 import (
 	"errors"
 	"go/ast"
@@ -15,6 +17,10 @@ import (
 
 	. "github.com/jeremywhuff/rp"
 )
+
+// NOTE: This was a half-baked attempt to build an auto-migration tool.
+// I don't think it's worth it. Leaving it here just in case someone wants to revive it in the future.
+// The idea was that it would do something like the tutorial, but automatically: https://medium.com/@jeremywhuff/950a10c3c31f
 
 // Thoughts on next steps:
 // - Create a function that uses the ast package to break a large amount of source code into sections, breaking at the
@@ -51,7 +57,7 @@ func main() {
 	
 		"github.com/gin-gonic/gin"
 		. "github.com/jeremywhuff/rp"
-		"github.com/jeremywhuff/rp/rpout"
+		"github.com/jeremywhuff/rp/modules/mongo"
 		"go.mongodb.org/mongo-driver/bson/primitive"
 		"go.mongodb.org/mongo-driver/mongo"
 		"go.mongodb.org/mongo-driver/mongo/options"
@@ -296,7 +302,7 @@ func wrapSubsection(src string) string {
 	
 		"github.com/gin-gonic/gin"
 		. "github.com/jeremywhuff/rp"
-		"github.com/jeremywhuff/rp/rpout"
+		"github.com/jeremywhuff/rp/mondules/rpmongo"
 		"go.mongodb.org/mongo-driver/bson/primitive"
 		"go.mongodb.org/mongo-driver/mongo"
 		"go.mongodb.org/mongo-driver/mongo/options"

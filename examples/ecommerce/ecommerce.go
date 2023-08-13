@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	. "github.com/jeremywhuff/rp"
-	"github.com/jeremywhuff/rp/rpout"
+	"github.com/jeremywhuff/rp/modules/rpmongo"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -524,7 +524,7 @@ func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClie
 
 			})).Then(
 
-		rpout.MongoFindOne("mongo.client.database", "customers", rpout.MongoFindOneOptions{
+		rpmongo.MongoFindOne("mongo.client.database", "customers", rpmongo.MongoFindOneOptions{
 			Result: &CustomerDocument{}})).Then(
 
 		CtxSet("mongo.document.customer"))
@@ -542,7 +542,7 @@ func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClie
 
 			})).Then(
 
-		rpout.MongoFindOne("mongo.client.database", "inventory", rpout.MongoFindOneOptions{
+		rpmongo.MongoFindOne("mongo.client.database", "inventory", rpmongo.MongoFindOneOptions{
 			Result: &InventoryDocument{}})).Then(
 
 		CtxSet("mongo.document.inventory"))
@@ -637,7 +637,7 @@ func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClie
 				return order, nil
 			})).Then(
 
-		rpout.MongoInsert("mongo.client.database", "orders"))
+		rpmongo.MongoInsert("mongo.client.database", "orders"))
 
 	// 7) Send email for receipt
 	sendOrderInProgressAlert := MakeChain(

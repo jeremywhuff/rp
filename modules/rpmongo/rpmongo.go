@@ -1,4 +1,4 @@
-package rpout
+package rpmongo
 
 import (
 	"context"
