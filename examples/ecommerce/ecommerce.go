@@ -51,7 +51,7 @@ func main() {
 
 	// Set up a DB to connect to, for instance a local one like this - https://brandonblankenstein.medium.com/install-and-run-mongodb-on-mac-1604ae750e57
 	// MAKE SURE this DB is empty, as it will be cleared and populated with dummy data
-	mongoDBURI := "" //"mongodb://localhost:27017"
+	mongoDBURI := "" // Update to your sandbox URI. It WILL delete data at launch.
 
 	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoDBURI))
 	if err != nil {
