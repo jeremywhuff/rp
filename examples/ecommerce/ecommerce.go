@@ -495,16 +495,6 @@ func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient
 // Tidied up handler in rp, which can be set to run with or without concurrency optimizations
 func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient, withConcurrency bool) gin.HandlerFunc {
 
-	// Define a short execution chain for each step
-	// These chains should be "atomic" in the sense that they represent a single task that isn't worth breaking down
-	// further. From these, we want to build upwards instead.
-	// As such, data flows within the chain between successive sequential stages by passing it forward as the return
-	// value of the stage execution function, then receiving it in the next stage's execution function as the in
-	// parameter.
-	// Data flows between chains by using the CtxSet and CtxGet stages to store and retrieve data from the gin.Context.
-	// This gives us flexibility to easily reorder or parallelize the execution of chains. The only requirement is that
-	// the CtxGet of a given key must come after the CtxSet of that key.
-
 	// First: Parse request body
 	parse := First(
 		// TODO: Should Bind take a pointer or a value?
