@@ -76,7 +76,7 @@ func main() {
 	r := gin.Default()
 
 	// A) Without rp
-	// r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
+	r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
 
 	// B) Direct migration to rp
 	// r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerDirectMigrationToRP(mongoClient, paymentClient, shippingClient, emailClient))
@@ -85,7 +85,7 @@ func main() {
 	// r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient, false))
 
 	// D) With concurrency optimizations in rp
-	r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient, true))
+	// r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient, true))
 
 	r.Run(":8081")
 }
@@ -340,7 +340,7 @@ func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient
 				return nil, err
 			}
 
-			c.Set("req.body", body)
+			c.Set("req.body", &body)
 			return nil, nil
 		}))
 
