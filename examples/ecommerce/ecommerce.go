@@ -79,7 +79,7 @@ func main() {
 	r.POST(Path, PurchaseHandler(mongoClient, paymentClient, shippingClient, emailClient))
 
 	// B) Direct migration to rp
-	// r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerDirectMigrationToRP(mongoClient, paymentClient, shippingClient, emailClient))
+	// r.POST(Path, PurchaseHandlerDirectMigrationToRP(mongoClient, paymentClient, shippingClient, emailClient))
 
 	// C) Tidied up implementation in rp
 	// r.POST(Path, MiddlewareForRPHandlers(mongoClient, paymentClient, shippingClient, emailClient), PurchaseHandlerWithRP(mongoClient, paymentClient, shippingClient, emailClient, false))
@@ -493,7 +493,7 @@ func PurchaseHandlerDirectMigrationToRP(mongoClient *mongo.Client, paymentClient
 }
 
 // Tidied up handler in rp, which can be set to run with or without concurrency optimizations
-func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClient, shippingClient *ShippingClient, emailClient *EmailClient, withConcurrency bool) gin.HandlerFunc {
+func PurchaseHandlerWithRP(withConcurrency bool) gin.HandlerFunc {
 
 	// First: Parse request body
 	parse := First(
