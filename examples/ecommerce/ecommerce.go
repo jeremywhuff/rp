@@ -497,7 +497,6 @@ func PurchaseHandlerWithRP(mongoClient *mongo.Client, paymentClient *PaymentClie
 
 	// First: Parse request body
 	parse := First(
-		// TODO: Should Bind take a pointer or a value?
 		Bind(&PurchaseRequestBody{})).Then(
 		CtxSet("req.body"))
 
