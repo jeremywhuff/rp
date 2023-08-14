@@ -6,4 +6,4 @@ It works by wrapping execution steps of any arbitrary code into stages that can 
 
 Check out [the tutorial](https://medium.com/@jeremywhuff/950a10c3c31f) for more.
 
-### UNDER DEVELOPMENT - I expect to have a stable version in a couple of weeks. This README will be updated as progress is made.
+### UNDER DEVELOPMENT - I expect to have a first-release version shortly. This README will be updated.
